@@ -1,0 +1,66 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch: {}
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      # لازم تتشغل قبل الـ build عشان توّلد database.g.dart (كود Drift)
+      - name: Generate Drift code (build_runner)
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Analyze (non-blocking)
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        continue-on-error: true
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Zip release build
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}"
+          Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath "psapp-windows.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: psapp-windows-${{ github.sha }}
+          path: psapp-windows.zip
+          retention-days: 30
+
+      # لو الـ push كان بتاج (v1.0.0 مثلاً)، بيعمل Release على GitHub تلقائيًا
+      # ويرفق الـ zip عليه.
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: psapp-windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
