@@ -1,0 +1,50 @@
+name: psapp_flutter
+description: "بلايستيشن الحريفة — نظام إدارة كافيه بلايستيشن (Flutter/Windows)"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '^3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ── State management ──
+  flutter_riverpod: ^2.5.1
+
+  # ── Local database (المصدر الأساسي للبيانات) ──
+  drift: ^2.20.2
+  sqlite3_flutter_libs: ^0.5.24
+  path_provider: ^2.1.4
+  path: ^1.9.0
+
+  # ── Firebase REST sync (مزامنة مع الموبايل) ──
+  http: ^1.2.2
+
+  # ── License system (HMAC-SHA256 + AES-128-CTR) ──
+  crypto: ^3.0.5
+  pointycastle: ^3.9.1
+
+  # ── PDF / Excel export ──
+  pdf: ^3.11.1
+  printing: ^5.13.3
+  excel: ^4.0.6
+
+  # ── Misc ──
+  intl: ^0.19.0
+  uuid: ^4.5.1
+  window_manager: ^0.4.3   # للتحكم في نافذة الويندوز (maximized عند الفتح)
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+  drift_dev: ^2.20.2
+  build_runner: ^2.4.13
+
+flutter:
+  uses-material-design: true
