@@ -20,7 +20,7 @@ class PSApp extends StatelessWidget {
       // التطبيق عربي بالكامل — RTL دايمًا بغض النظر عن لغة نظام التشغيل.
       locale: const Locale('ar'),
       supportedLocales: const [Locale('ar')],
-      localizationsDelegates: const [
+      localizationsDelegates: [
         DefaultMaterialLocalizations.delegate,
         DefaultWidgetsLocalizations.delegate,
         DefaultCupertinoLocalizations.delegate,
