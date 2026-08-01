@@ -32,8 +32,22 @@ jobs:
         run: flutter pub get
 
       # لازم تتشغل قبل الـ build عشان توّلد database.g.dart (كود Drift)
+      # build_runner clean الأول: عشان نتجنب مشكلة الـ cache اللي بتخلي
+      # build_runner يفتكر إنه بنى الملفات قبل كده ويسيبها من غير كتابة فعلية
+      # (لاحظنا التحذير ده في تشغيل سابق: "--delete-conflicting-outputs" اتشالت
+      # من نسخة build_runner الجديدة وبقى سلوك التعامل مع التعارضات مختلف).
+      - name: Clean build_runner cache
+        run: dart run build_runner clean
+        continue-on-error: true
+
       - name: Generate Drift code (build_runner)
-        run: dart run build_runner build --delete-conflicting-outputs -v
+        run: dart run build_runner build -v
+
+      - name: List any generated .g.dart files (debug)
+        shell: pwsh
+        run: |
+          Write-Host "كل ملفات .g.dart الموجودة دلوقتي:"
+          Get-ChildItem -Recurse -Filter "*.g.dart" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_.FullName }
 
       - name: Verify generated Drift code exists
         shell: pwsh
