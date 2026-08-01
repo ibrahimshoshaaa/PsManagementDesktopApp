@@ -40,6 +40,14 @@ jobs:
         run: dart run build_runner clean
         continue-on-error: true
 
+      - name: Remove .dart_tool (extra-clean, insurance against stale generator state)
+        shell: pwsh
+        run: |
+          if (Test-Path ".dart_tool") { Remove-Item -Recurse -Force ".dart_tool" }
+
+      - name: Get dependencies (again, after wiping .dart_tool)
+        run: flutter pub get
+
       - name: Generate Drift code (build_runner)
         run: dart run build_runner build -v
 
