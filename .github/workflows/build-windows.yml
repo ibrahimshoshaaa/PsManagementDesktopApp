@@ -33,7 +33,17 @@ jobs:
 
       # لازم تتشغل قبل الـ build عشان توّلد database.g.dart (كود Drift)
       - name: Generate Drift code (build_runner)
-        run: dart run build_runner build --delete-conflicting-outputs
+        run: dart run build_runner build --delete-conflicting-outputs -v
+
+      - name: Verify generated Drift code exists
+        shell: pwsh
+        run: |
+          if (!(Test-Path "lib/data/local/database.g.dart")) {
+            Write-Error "database.g.dart لم يتولد! لازم نوقف هنا قبل ما نكمل build_windows اللي هيدي أخطاء مضللة."
+            exit 1
+          }
+          Write-Host "database.g.dart موجود، عدد الأسطر:"
+          (Get-Content "lib/data/local/database.g.dart").Count
 
       - name: Analyze (non-blocking)
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
