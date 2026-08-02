@@ -24,7 +24,7 @@ class SettingsController {
     final existing = await _db.select(_db.devices).get();
     final nextId = existing.isEmpty ? 0 : (existing.map((d) => d.deviceId).reduce((a, b) => a > b ? a : b) + 1);
     await _db.into(_db.devices).insert(
-          DevicesCompanion.insert(deviceId: nextId, displayName: displayName, deviceType: Value(deviceType)),
+          DevicesCompanion.insert(deviceId: Value(nextId), displayName: displayName, deviceType: Value(deviceType)),
         );
     await (_db.update(_db.appConfig)..where((t) => t.id.equals(0)))
         .write(AppConfigCompanion(numDevices: Value(existing.length + 1)));
@@ -57,7 +57,7 @@ class SettingsController {
     final nextId = existing.isEmpty ? 0 : (existing.map((t) => t.tableId).reduce((a, b) => a > b ? a : b) + 1);
     await _db.into(_db.gameTables).insert(
           GameTablesCompanion.insert(
-            tableId: nextId,
+            tableId: Value(nextId),
             name: name,
             tableType: Value(tableType),
             rate: Value(rate),
@@ -80,7 +80,7 @@ class SettingsController {
   Future<void> addDrinkTable({required String name}) async {
     final existing = await _db.select(_db.drinkTables).get();
     final nextId = existing.isEmpty ? 0 : (existing.map((t) => t.tableId).reduce((a, b) => a > b ? a : b) + 1);
-    await _db.into(_db.drinkTables).insert(DrinkTablesCompanion.insert(tableId: nextId, name: name));
+    await _db.into(_db.drinkTables).insert(DrinkTablesCompanion.insert(tableId: Value(nextId), name: name));
     _pushDrinkTables();
     AuditLogService.logTable(action: AuditAction.drinkTableAdded, tableName: name);
   }

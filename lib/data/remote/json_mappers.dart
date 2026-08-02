@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:drift/drift.dart';
 import '../local/database.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -62,8 +63,8 @@ Map<String, dynamic> deviceToSlimJson(DeviceRow d) {
 
 DevicesCompanion deviceFromJson(Map<String, dynamic> j, int id) {
   return DevicesCompanion.insert(
-    deviceId: id,
-    displayName: Value(j['display_name']?.toString() ?? 'PS $id'),
+    deviceId: Value(id),
+    displayName: j['display_name']?.toString() ?? 'PS $id',
     deviceType: Value(j['device_type']?.toString() ?? 'ps4'),
     mode: Value(j['mode']?.toString() ?? 'normal'),
     status: Value(j['status']?.toString() ?? 'متاح'),
@@ -95,7 +96,7 @@ Map<String, dynamic> gameTableToJson(GameTableRow t) => {
 
 GameTablesCompanion gameTableFromJson(Map<String, dynamic> j, int id) {
   return GameTablesCompanion.insert(
-    tableId: id,
+    tableId: Value(id),
     name: j['name']?.toString() ?? 'تربيزة $id',
     tableType: Value(j['table_type']?.toString() ?? 'ping'),
     rate: Value((j['rate'] as num?)?.toInt() ?? 0),
@@ -116,7 +117,7 @@ Map<String, dynamic> drinkTableToJson(DrinkTableRow t) => {
 
 DrinkTablesCompanion drinkTableFromJson(Map<String, dynamic> j, int id) {
   return DrinkTablesCompanion.insert(
-    tableId: id,
+    tableId: Value(id),
     name: j['name']?.toString() ?? 'مشروبات $id',
     ordersJson: Value(jsonEncode(Map<String, dynamic>.from(j['orders'] as Map? ?? {}))),
   );

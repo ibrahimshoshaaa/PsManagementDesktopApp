@@ -61,7 +61,7 @@ class TablesController {
     await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId)))
         .write(const GameTablesCompanion(isPaused: Value(false), ordersJson: Value('{}')));
     await _db.customStatement(
-      'UPDATE game_tables SET start_time = NULL, pause_start_time = NULL WHERE table_id = ?',
+      'UPDATE game_tables SET start_time = NULL, pause_start_time = NULL, added_seconds = 0 WHERE table_id = ?',
       [tableId],
     );
     _schedulePush();
@@ -128,7 +128,7 @@ class TablesController {
       ),
     );
     await _db.customStatement(
-      'UPDATE game_tables SET start_time = NULL, pause_start_time = NULL WHERE table_id = ?',
+      'UPDATE game_tables SET start_time = NULL, pause_start_time = NULL, added_seconds = 0 WHERE table_id = ?',
       [tableId],
     );
 

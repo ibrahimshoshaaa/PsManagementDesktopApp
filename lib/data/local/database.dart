@@ -57,6 +57,7 @@ class GameTables extends Table {
   IntColumn get rate => integer().withDefault(const Constant(0))(); // سعر الساعة
   IntColumn get gamePrice => integer().withDefault(const Constant(0))(); // json: game_price
   IntColumn get startTime => integer().nullable()();
+  IntColumn get addedSeconds => integer().withDefault(const Constant(0))();
   BoolColumn get isPaused => boolean().withDefault(const Constant(false))();
   IntColumn get pauseStartTime => integer().nullable()();
   TextColumn get ordersJson => text().withDefault(const Constant('{}'))();
