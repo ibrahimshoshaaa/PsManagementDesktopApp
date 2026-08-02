@@ -75,13 +75,13 @@ jobs:
         continue-on-error: true
 
       - name: Build Windows release
-        run: flutter build windows --debug
+        run: flutter build windows --release
 
       - name: Zip release build
         shell: pwsh
         run: |
           $version = "${{ github.ref_name }}"
-          Compress-Archive -Path "build/windows/x64/runner/Debug/*" -DestinationPath "psapp-windows.zip"
+          Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath "psapp-windows.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
