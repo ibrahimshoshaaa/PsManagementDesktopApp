@@ -16,6 +16,7 @@ import '../debts/debts_screen.dart';
 import '../expenses/expenses_screen.dart';
 import '../settings/settings_screen.dart';
 import '../audit/audit_logs_screen.dart';
+import '../archive/archive_screen.dart';
 
 class _NavItem {
   final String label;
@@ -54,6 +55,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       if (config?.rechargeEnabled ?? false)
         const _NavItem('الشحن', Icons.battery_charging_full, RechargeScreen()),
       const _NavItem('طلبات العملاء', Icons.qr_code_scanner, CustomerOrdersScreen()),
+      _NavItem('الأرشيف', Icons.archive_outlined, const ArchiveScreen(), adminOnly: true),
       _NavItem('سجل التدقيق', Icons.fact_check, const AuditLogsScreen(), adminOnly: true),
       _NavItem('الإعدادات', Icons.settings, const SettingsScreen(), adminOnly: true),
     ];

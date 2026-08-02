@@ -119,6 +119,11 @@ final openShiftsStreamProvider = StreamProvider<List<OpenShiftRow>>((ref) {
   return ref.watch(databaseProvider).watchOpenShifts();
 });
 
+final dailyArchivesStreamProvider = StreamProvider<List<DailyArchiveRow>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return (db.select(db.dailyArchives)..orderBy([(t) => OrderingTerm.desc(t.date)])).watch();
+});
+
 final tournamentsStreamProvider = StreamProvider<List<TournamentRow>>((ref) {
   return ref.watch(databaseProvider).select(ref.watch(databaseProvider).tournaments).watch();
 });

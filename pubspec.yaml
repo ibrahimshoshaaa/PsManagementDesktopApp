@@ -39,6 +39,7 @@ dependencies:
   window_manager: ^0.4.3   # للتحكم في نافذة الويندوز (maximized عند الفتح)
 
   cupertino_icons: ^1.0.8
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../data/local/database.dart';
 import '../../domain/table_logic.dart';
 import '../../providers/core_providers.dart';
+import '../shared/qr_code_dialog.dart';
 import 'tables_controller.dart';
 
 class TablesScreen extends ConsumerWidget {
@@ -51,70 +52,133 @@ class _TableCard extends ConsumerWidget {
     final controller = ref.read(tablesControllerProvider);
     final isActive = table.isActive;
     final cost = isActive ? table.hourlyTimeCost : 0.0;
-    final statusColor = isActive ? (table.isPaused ? AppColors.amber : AppColors.green) : Colors.white24;
+    final isBilliard = table.tableType == 'billiard';
+    final glowColor = table.isPaused ? AppColors.amber : AppColors.accent;
 
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => _showTableSheet(context, ref),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.table_bar, size: 20, color: Colors.white70),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(table.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                  Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
-                ],
-              ),
-              Text(table.tableType, style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 11)),
-              const Spacer(),
-              Text(
-                isActive ? table.timerText() : '—',
-                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                isActive ? '${cost.toStringAsFixed(1)} ج' : 'متاحة',
-                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
-              ),
-              const Spacer(),
-              if (!isActive)
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonal(onPressed: () => controller.start(table.tableId), child: const Text('تشغيل')),
-                )
-              else
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isActive ? glowColor : Colors.white12, width: isActive ? 1.5 : 1),
+        boxShadow:
+            isActive ? [BoxShadow(color: glowColor.withOpacity(0.25), blurRadius: 14, spreadRadius: 1)] : [],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _showTableSheet(context, ref),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Row(
                   children: [
                     Expanded(
-                      child: IconButton.filledTonal(
-                        onPressed: () =>
-                            table.isPaused ? controller.resume(table.tableId) : controller.pause(table.tableId),
-                        icon: Icon(table.isPaused ? Icons.play_arrow : Icons.pause),
-                      ),
+                      child: Text(table.name,
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+                          overflow: TextOverflow.ellipsis),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: IconButton.filledTonal(
-                        style: IconButton.styleFrom(backgroundColor: AppColors.redDark.withOpacity(0.3)),
-                        onPressed: () => _confirmStop(context, ref),
-                        icon: const Icon(Icons.stop, color: AppColors.red),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: (isBilliard ? Colors.purple : AppColors.green).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: (isBilliard ? Colors.purple : AppColors.green).withOpacity(0.8)),
+                      ),
+                      child: Text(isBilliard ? '🎱 بلياردو' : '🏓 بينج',
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: isBilliard ? Colors.purple : AppColors.green)),
+                    ),
+                    const SizedBox(width: 6),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () => _showQr(context, ref),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2),
+                        child: Icon(Icons.qr_code_2, size: 18, color: Colors.white38),
                       ),
                     ),
                   ],
                 ),
-            ],
+                const Spacer(),
+                Center(
+                  child: Text(
+                    isActive ? table.timerText() : '—',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      color: table.isPaused ? AppColors.amber : Colors.white,
+                      shadows: isActive ? [Shadow(color: glowColor.withOpacity(0.5), blurRadius: 8)] : [],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Center(
+                  child: Text(
+                    isActive ? '${cost.toStringAsFixed(1)} ج' : 'متاحة',
+                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13),
+                  ),
+                ),
+                const Spacer(),
+                if (!isActive)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.tonal(onPressed: () => controller.start(table.tableId), child: const Text('تشغيل')),
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: IconButton.filledTonal(
+                          onPressed: () =>
+                              table.isPaused ? controller.resume(table.tableId) : controller.pause(table.tableId),
+                          icon: Icon(table.isPaused ? Icons.play_arrow : Icons.pause),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: IconButton.filledTonal(
+                          style: IconButton.styleFrom(backgroundColor: AppColors.orange.withOpacity(0.2)),
+                          onPressed: () => _showTableSheet(context, ref),
+                          icon: const Icon(Icons.fastfood, color: AppColors.orange),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: IconButton.filledTonal(
+                          style: IconButton.styleFrom(backgroundColor: AppColors.redDark.withOpacity(0.3)),
+                          onPressed: () => _confirmStop(context, ref),
+                          icon: const Icon(Icons.stop, color: AppColors.red),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  void _showQr(BuildContext context, WidgetRef ref) {
+    final shopId = ref.read(appConfigProvider).valueOrNull?.shopId;
+    if (shopId == null) return;
+    final isBilliard = table.tableType == 'billiard';
+    showQrCodeDialog(
+      context,
+      name: table.name,
+      url: QrLinkBuilder.table(shopId, table.tableId),
+      color: isBilliard ? Colors.purple : AppColors.green,
+      typeLabel: isBilliard ? '🎱 بلياردو' : '🏓 بينج',
+      icon: Icons.table_bar,
+      subtitle: 'سيتمكن العميل من متابعة الوقت والحساب\nوإرسال طلبات المشروبات للتربيزة',
     );
   }
 

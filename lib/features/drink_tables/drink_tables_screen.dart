@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/local/database.dart';
 import '../../providers/core_providers.dart';
+import '../shared/qr_code_dialog.dart';
 import 'drink_tables_controller.dart';
 
 class DrinkTablesScreen extends ConsumerWidget {
@@ -53,45 +54,80 @@ class _DrinkTableCard extends ConsumerWidget {
     final menuPrices = {for (final m in menu) m.itemName: m.price};
     final total = orders.entries.fold<double>(0, (sum, e) => sum + e.value * (menuPrices[e.key] ?? 0));
 
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => _showSheet(context, ref),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.local_cafe, size: 20, color: Colors.white70),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(table.name,
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                        overflow: TextOverflow.ellipsis),
-                  ),
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(color: hasOrders ? AppColors.green : Colors.white24, shape: BoxShape.circle),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Text('${orders.length} أصناف', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
-              const SizedBox(height: 4),
-              Text('${total.toStringAsFixed(1)} ج', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-              const Spacer(),
-              if (hasOrders)
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.tonal(onPressed: () => _checkout(context, ref), child: const Text('حساب')),
+    final glowColor = AppColors.orange;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: hasOrders ? glowColor : Colors.white12, width: hasOrders ? 1.5 : 1),
+        boxShadow:
+            hasOrders ? [BoxShadow(color: glowColor.withOpacity(0.25), blurRadius: 14, spreadRadius: 1)] : [],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _showSheet(context, ref),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.local_cafe, size: 18, color: hasOrders ? AppColors.orange : Colors.white38),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(table.name,
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () => _showQr(context, ref),
+                      child: const Padding(
+                        padding: EdgeInsets.all(2),
+                        child: Icon(Icons.qr_code_2, size: 18, color: Colors.white38),
+                      ),
+                    ),
+                  ],
                 ),
-            ],
+                const Spacer(),
+                Center(
+                    child:
+                        Text('${orders.length} أصناف', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13))),
+                const SizedBox(height: 4),
+                Center(
+                  child: Text('${total.toStringAsFixed(1)} ج',
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.green)),
+                ),
+                const Spacer(),
+                if (hasOrders)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.tonal(onPressed: () => _checkout(context, ref), child: const Text('حساب')),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  void _showQr(BuildContext context, WidgetRef ref) {
+    final shopId = ref.read(appConfigProvider).valueOrNull?.shopId;
+    if (shopId == null) return;
+    showQrCodeDialog(
+      context,
+      name: table.name,
+      url: QrLinkBuilder.drinkTable(shopId, table.tableId),
+      color: AppColors.orange,
+      typeLabel: '🍹 مشروبات',
+      icon: Icons.local_drink,
+      subtitle: 'سيتمكن العميل من عرض المنيو\nوإرسال طلباته مباشرة لتربيزة المشروبات',
     );
   }
 
