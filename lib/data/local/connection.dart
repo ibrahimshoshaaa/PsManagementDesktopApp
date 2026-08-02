@@ -2,7 +2,8 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path/path.dart' as p;
+import 'package:path/path.dart' as p ;
+  import 'package:drift/drift.dart';
 
 /// النسخة القديمة (Flet/Python) كانت بتخزن كل ملفات البيانات (ps_data_v3.json,
 /// license.lic, shifts_archive.json...) جنب ملف الـ .exe نفسه (BASE_DIR):
