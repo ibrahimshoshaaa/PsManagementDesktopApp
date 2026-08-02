@@ -1,5 +1,6 @@
 import 'dart:convert';
 import '../local/database.dart';
+import 'package:drift/drift.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // json_mappers — تحويل بين صفوف Drift المحلية وشكل الـ JSON اللي بيتزامن فعليًا
