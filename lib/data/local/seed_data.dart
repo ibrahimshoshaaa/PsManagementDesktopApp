@@ -83,6 +83,6 @@ Future<void> seedDefaults(AppDatabase db) async {
   }
 
   await db.into(db.subscriptionCache).insert(
-        const SubscriptionCacheCompanion.insert(id: Value(0)),
+        SubscriptionCacheCompanion.insert(id: Value(0)),
       );
 }
