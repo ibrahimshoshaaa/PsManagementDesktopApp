@@ -31,6 +31,9 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Create missing platform folders (e.g. windows/)
+        run: flutter create . --platforms=windows
+
       # لازم تتشغل قبل الـ build عشان توّلد database.g.dart (كود Drift)
       # build_runner clean الأول: عشان نتجنب مشكلة الـ cache اللي بتخلي
       # build_runner يفتكر إنه بنى الملفات قبل كده ويسيبها من غير كتابة فعلية
