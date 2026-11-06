@@ -1,34 +1,13 @@
 import 'package:drift/drift.dart';
 import 'database.dart';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// بيانات افتراضية أول ما الداتابيز يتعمل — منسوخة بالظبط من AppState() في
-// تطبيق الموبايل (مش من ملف بايثون)، عشان تثبيت جديد للديسكتوب يقدر يتوافق
-// فورًا مع باسورد الأدمن الافتراضي بتاع الموبايل من غير ما حد يحتاج يعرف
-// كلمة السر الأصلية (بنستخدم الـ hash الجاهز مباشرة زي ما هو).
-// ═══════════════════════════════════════════════════════════════════════════
-
-const _defaultAdminHash =
-    '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
-const _defaultCashierHash =
-    'ef797c8118f02dfb649607dd5d3f8c7623048c9c063d532cc95c5ed7a898a64f';
-const _defaultHistoryHash =
-    'ef797c8118f02dfb649607dd5d3f8c7623048c9c063d532cc95c5ed7a898a64f';
-
 Future<void> seedDefaults(AppDatabase db) async {
   await db.into(db.appConfig).insert(
         AppConfigCompanion.insert(
           id: const Value(0),
           shopName: const Value('Shosha PlayStation'),
-          adminPasswordHash: _defaultAdminHash,
-          historyPasswordHash: _defaultHistoryHash,
-        ),
-      );
-
-  await db.into(db.cashiers).insert(
-        CashiersCompanion.insert(
-          name: 'كاشير 1',
-          passwordHash: _defaultCashierHash,
+          adminPasswordHash: '',
+          historyPasswordHash: '',
         ),
       );
 

@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/local/database.dart';
-import '../../data/remote/firebase_service.dart';
 import '../../providers/core_providers.dart';
 
 final tournamentsControllerProvider = Provider<TournamentsController>((ref) => TournamentsController(ref));
@@ -15,76 +15,61 @@ class TournamentsController {
 
   AppDatabase get _db => ref.read(databaseProvider);
 
-  /// البطولات on-demand (زي الموبايل بالظبط) — بنسحبها بس لما حد يفتح الشاشة.
-  Future<void> refreshFromRemote() async {
-    final shopId = FirebaseService.currentShopId;
-    if (shopId == null) return;
-    final remote = await FirebaseService.fetchTournamentsOnDemand(shopId);
-    for (final t in remote) {
-      final id = t['id']?.toString();
-      if (id == null) continue;
-      await _db.into(_db.tournaments).insertOnConflictUpdate(
-            TournamentsCompanion.insert(
-              id: id,
-              name: t['name']?.toString() ?? '',
-              game: Value(t['game']?.toString() ?? ''),
-              entryFee: Value((t['entry_fee'] as num?)?.toInt() ?? 0),
-              maxPlayers: Value((t['max_players'] as num?)?.toInt() ?? 8),
-              status: Value(t['status']?.toString() ?? 'تسجيل'),
-              playersJson: Value(jsonEncode(t['players'] ?? [])),
-              roundsJson: Value(jsonEncode(t['rounds'] ?? [])),
-              currentRound: Value((t['current_round'] as num?)?.toInt() ?? 0),
-              winnerId: Value(t['winner_id']?.toString()),
-            ),
-          );
-    }
-  }
-
   Future<void> create({required String name, required String game, int entryFee = 0, int maxPlayers = 8}) async {
+    if (name.trim().isEmpty || maxPlayers < 2 || maxPlayers > 128 || entryFee < 0) throw StateError('راجع اسم البطولة وعدد اللاعبين والاشتراك.');
     await _db.into(_db.tournaments).insert(
           TournamentsCompanion.insert(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            id: const Uuid().v4(),
             name: name,
             game: Value(game),
             entryFee: Value(entryFee),
             maxPlayers: Value(maxPlayers),
           ),
         );
-    await _pushAll();
   }
 
-  Future<void> addPlayer(String tournamentId, String playerName) async {
+  Future<void> addPlayer(String tournamentId, String playerName, {String team = ''}) => _db.transaction(() async {
     final t = await (_db.select(_db.tournaments)..where((x) => x.id.equals(tournamentId))).getSingle();
     final players = List<Map<String, dynamic>>.from(jsonDecode(t.playersJson) as List);
-    players.add({'id': DateTime.now().millisecondsSinceEpoch.toString(), 'name': playerName});
+    if (t.status != 'تسجيل' || players.length >= t.maxPlayers) throw StateError('التسجيل مقفول أو البطولة مكتملة.');
+    if (playerName.trim().isEmpty) throw StateError('اكتب اسم اللاعب.');
+    players.add({'id': const Uuid().v4(), 'name': playerName.trim(), 'team': team.trim()});
     await (_db.update(_db.tournaments)..where((x) => x.id.equals(tournamentId)))
         .write(TournamentsCompanion(playersJson: Value(jsonEncode(players))));
-    await _pushAll();
-  }
+  });
+
+  Future<void> removePlayer(String tournamentId, String id) => _db.transaction(() async {
+    final t = await (_db.select(_db.tournaments)..where((row) => row.id.equals(tournamentId))).getSingle();
+    if (t.status != 'تسجيل') throw StateError('التسجيل مقفول.');
+    final players = List<Map<String, dynamic>>.from(jsonDecode(t.playersJson) as List)
+      ..removeWhere((player) => player['id'] == id);
+    await (_db.update(_db.tournaments)..where((row) => row.id.equals(tournamentId)))
+        .write(TournamentsCompanion(playersJson: Value(jsonEncode(players))));
+  });
 
   /// توليد البراكت — إقصاء مباشر (single elimination)، مع bye تلقائي لو عدد
   /// اللاعبين مش قوة لـ 2.
-  Future<void> startTournament(String tournamentId) async {
+  Future<void> startTournament(String tournamentId) => _db.transaction(() async {
     final t = await (_db.select(_db.tournaments)..where((x) => x.id.equals(tournamentId))).getSingle();
     final players = List<Map<String, dynamic>>.from(jsonDecode(t.playersJson) as List);
-    if (players.length < 2) return;
+    if (t.status != 'تسجيل' || players.length < 2) {
+      throw StateError('البطولة لازم تكون في التسجيل وفيها لاعبين على الأقل.');
+    }
 
     final shuffled = List<Map<String, dynamic>>.from(players)..shuffle(Random());
     var bracketSize = 1;
     while (bracketSize < shuffled.length) {
       bracketSize *= 2;
     }
-    while (shuffled.length < bracketSize) {
-      shuffled.add({'id': null, 'name': 'BYE'});
-    }
-
+    final byes = bracketSize - shuffled.length;
     final firstRound = <Map<String, dynamic>>[];
-    for (var i = 0; i < shuffled.length; i += 2) {
-      final p1 = shuffled[i];
-      final p2 = shuffled[i + 1];
-      final isBye = p1['id'] == null || p2['id'] == null;
+    var cursor = 0;
+    for (var match = 0; match < bracketSize ~/ 2; match++) {
+      final p1 = shuffled[cursor++];
+      final isBye = match < byes;
+      final p2 = isBye ? <String, dynamic>{'id': null, 'name': 'تأهل مباشر'} : shuffled[cursor++];
       firstRound.add({
-        'id': '${tournamentId}_r0_m${i ~/ 2}',
+        'id': '${tournamentId}_r0_m$match',
         'player1': p1,
         'player2': p2,
         'winner': isBye ? (p1['id'] != null ? p1 : p2) : null,
@@ -99,24 +84,28 @@ class TournamentsController {
         currentRound: const Value(0),
       ),
     );
-    await _pushAll();
     await _maybeGenerateNextRound(tournamentId);
-  }
+  });
 
-  Future<void> setMatchWinner(String tournamentId, int roundIndex, int matchIndex, Map<String, dynamic> winner) async {
-    final t = await (_db.select(_db.tournaments)..where((x) => x.id.equals(tournamentId))).getSingle();
+  Future<void> setMatchScore(String tournamentId, int roundIndex, int matchIndex, int first, int second) =>
+      _db.transaction(() async {
+    final t = await (_db.select(_db.tournaments)..where((row) => row.id.equals(tournamentId))).getSingle();
+    if (t.status != 'جارية' || roundIndex != t.currentRound || first < 0 || second < 0 || first == second) {
+      throw StateError('اكتب نتيجة صحيحة فيها فائز.');
+    }
     final rounds = List<List<dynamic>>.from(
-      (jsonDecode(t.roundsJson) as List).map((r) => List<dynamic>.from(r as List)),
+      (jsonDecode(t.roundsJson) as List).map((round) => List<dynamic>.from(round as List)),
     );
     final match = Map<String, dynamic>.from(rounds[roundIndex][matchIndex] as Map);
-    match['winner'] = winner;
+    if (match['winner'] != null || match['is_bye'] == true) throw StateError('المباراة اتحسمت بالفعل.');
+    match['score1'] = first;
+    match['score2'] = second;
+    match['winner'] = match[first > second ? 'player1' : 'player2'];
     rounds[roundIndex][matchIndex] = match;
-
-    await (_db.update(_db.tournaments)..where((x) => x.id.equals(tournamentId)))
+    await (_db.update(_db.tournaments)..where((row) => row.id.equals(tournamentId)))
         .write(TournamentsCompanion(roundsJson: Value(jsonEncode(rounds))));
-    await _pushAll();
     await _maybeGenerateNextRound(tournamentId);
-  }
+  });
 
   Future<void> _maybeGenerateNextRound(String tournamentId) async {
     final t = await (_db.select(_db.tournaments)..where((x) => x.id.equals(tournamentId))).getSingle();
@@ -133,7 +122,6 @@ class TournamentsController {
       await (_db.update(_db.tournaments)..where((x) => x.id.equals(tournamentId))).write(
         TournamentsCompanion(status: const Value('منتهية'), winnerId: Value(winner['id']?.toString())),
       );
-      await _pushAll();
       return;
     }
 
@@ -155,14 +143,11 @@ class TournamentsController {
     await (_db.update(_db.tournaments)..where((x) => x.id.equals(tournamentId))).write(
       TournamentsCompanion(roundsJson: Value(jsonEncode(rounds)), currentRound: Value(rounds.length - 1)),
     );
-    await _pushAll();
     await _maybeGenerateNextRound(tournamentId);
   }
 
   Future<void> delete(String tournamentId) async {
     await (_db.delete(_db.tournaments)..where((x) => x.id.equals(tournamentId))).go();
-    await _pushAll();
   }
 
-  Future<void> _pushAll() => ref.read(syncServiceProvider).pushTournamentsImmediate();
 }

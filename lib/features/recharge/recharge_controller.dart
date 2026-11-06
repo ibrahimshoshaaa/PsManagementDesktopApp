@@ -12,32 +12,33 @@ class RechargeController {
   RechargeController(this.ref);
 
   AppDatabase get _db => ref.read(databaseProvider);
-  void _pushStatic() => ref.read(syncServiceProvider).schedulePushStatic();
 
   Future<void> addCard(String name, int value) async {
+    if (name.trim().isEmpty || value <= 0) throw StateError('راجع اسم الكارت وقيمته.');
     await _db.into(_db.rechargeCards).insert(RechargeCardsCompanion.insert(name: name, value: value));
-    _pushStatic();
   }
 
   Future<void> removeCard(int rowId) async {
     await (_db.delete(_db.rechargeCards)..where((t) => t.rowId.equals(rowId))).go();
-    _pushStatic();
   }
 
   /// شحن رصيد (top_up) — بيزود الرصيد المتاح.
-  Future<void> addBalance(double amount, String note, {required String cashier}) async {
+  Future<void> addBalance(double amount, String note, {required String cashier}) => _db.transaction(() async {
+    if (!amount.isFinite || amount <= 0 || amount != amount.roundToDouble()) {
+      throw StateError('اكتب مبلغًا صحيحًا بالجنيه.');
+    }
     final config = await _db.readConfigOnce();
     await (_db.update(_db.appConfig)..where((t) => t.id.equals(0)))
         .write(AppConfigCompanion(rechargeBalance: Value(config.rechargeBalance + amount.round())));
     await _addTransaction(type: 'top_up', name: note, value: amount, cashier: cashier);
-    _pushStatic();
-  }
+  });
 
   /// استخدام كارت/شحن حر — بيقل الرصيد المتاح، وبيتسجل في السجل زي الموبايل بالظبط.
-  Future<void> redeem({required String type, required String name, required double value, required String cashier}) async {
-    await _addTransaction(type: type, name: name, value: value, cashier: cashier);
-
+  Future<void> redeem({required String type, required String name, required double value, required String cashier}) => _db.transaction(() async {
+    if (!value.isFinite || value <= 0 || value != value.roundToDouble()) throw StateError('راجع مبلغ الشحن.');
     final config = await _db.readConfigOnce();
+    if (value > config.rechargeBalance) throw StateError('الرصيد المتاح مش كفاية.');
+    await _addTransaction(type: type, name: name, value: value, cashier: cashier);
     await (_db.update(_db.appConfig)..where((t) => t.id.equals(0)))
         .write(AppConfigCompanion(rechargeBalance: Value(config.rechargeBalance - value.round())));
 
@@ -49,21 +50,12 @@ class RechargeController {
             timeCost: Value(value),
             buffetCost: const Value(0),
             ordersJson: const Value('{}'),
+            cashier: Value(ref.read(sessionProvider).cashierName ?? 'أدمن'),
             date: DateTime.now().toString(),
             createdAt: DateTime.now().toIso8601String(),
           ),
         );
-    await ref.read(syncServiceProvider).appendHistoryRecord({
-      'name': name,
-      'device_type': 'recharge',
-      'total': value,
-      'time_cost': value,
-      'buffet_cost': 0.0,
-      'orders': <String, int>{},
-      'date': DateTime.now().toString(),
-    });
-    _pushStatic();
-  }
+  });
 
   Future<void> _addTransaction({required String type, required String name, required double value, required String cashier}) async {
     // ملاحظة: shape المعاملات هنا مطابق للموبايل (type/name/value/cashier/date)

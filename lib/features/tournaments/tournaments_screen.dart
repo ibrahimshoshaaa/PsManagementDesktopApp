@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,7 @@ import '../../core/theme/app_colors.dart';
 import '../../data/local/database.dart';
 import '../../providers/core_providers.dart';
 import 'tournaments_controller.dart';
+import '../shared/operation_dialog.dart';
 
 class TournamentsScreen extends ConsumerStatefulWidget {
   const TournamentsScreen({super.key});
@@ -14,13 +17,6 @@ class TournamentsScreen extends ConsumerStatefulWidget {
 }
 
 class _TournamentsScreenState extends ConsumerState<TournamentsScreen> {
-  @override
-  void initState() {
-    super.initState();
-    // البطولات on-demand زي الموبايل — نسحبها لما الشاشة تتفتح.
-    Future.microtask(() => ref.read(tournamentsControllerProvider).refreshFromRemote());
-  }
-
   @override
   Widget build(BuildContext context) {
     final tournamentsAsync = ref.watch(tournamentsStreamProvider);
@@ -33,11 +29,11 @@ class _TournamentsScreenState extends ConsumerState<TournamentsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text('البطولات', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                const Spacer(),
-                FilledButton.icon(
+          ScreenIntro(
+            icon: Icons.emoji_events_outlined, title: 'البطولات',
+            description: 'سجّل اللاعبين، افتح جدول المباريات، واحفظ النتائج.',
+            actions: [
+              FilledButton.icon(
                   onPressed: () => _showCreateDialog(context),
                   icon: const Icon(Icons.add),
                   label: const Text('بطولة جديدة'),
@@ -47,7 +43,7 @@ class _TournamentsScreenState extends ConsumerState<TournamentsScreen> {
             const SizedBox(height: 16),
             Expanded(
               child: tournaments.isEmpty
-                  ? const Center(child: Text('مفيش بطولات لسه', style: TextStyle(color: Colors.white38)))
+                  ? const ScreenEmpty(icon: Icons.emoji_events_outlined, title: 'مفيش بطولات لسه', hint: 'أنشئ بطولة وحدد عدد اللاعبين والاشتراك.')
                   : ListView.builder(
                       itemCount: tournaments.length,
                       itemBuilder: (context, i) {
@@ -59,7 +55,12 @@ class _TournamentsScreenState extends ConsumerState<TournamentsScreen> {
                             subtitle: Text('${t.game} · ${t.status}', style: const TextStyle(color: Colors.white38)),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_outline, color: AppColors.red),
-                              onPressed: () => ref.read(tournamentsControllerProvider).delete(t.id),
+                              tooltip: 'حذف البطولة',
+                              onPressed: () => showOperationDialog(context,
+                                title: 'حذف بطولة ${t.name}؟', action: 'حذف البطولة',
+                                fields: const [Text('جدول البطولة ونتائجها هيتحذفوا.')],
+                                save: () => ref.read(tournamentsControllerProvider).delete(t.id),
+                              ),
                             ),
                             onTap: () => Navigator.push(
                               context,
@@ -76,41 +77,20 @@ class _TournamentsScreenState extends ConsumerState<TournamentsScreen> {
     );
   }
 
-  void _showCreateDialog(BuildContext context) {
-    final nameController = TextEditingController();
-    final gameController = TextEditingController();
-    final maxPlayersController = TextEditingController(text: '8');
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('بطولة جديدة'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'اسم البطولة')),
-            const SizedBox(height: 12),
-            TextField(controller: gameController, decoration: const InputDecoration(labelText: 'اللعبة')),
-            const SizedBox(height: 12),
-            TextField(controller: maxPlayersController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'أقصى عدد لاعبين')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () {
-              if (nameController.text.trim().isEmpty) return;
-              ref.read(tournamentsControllerProvider).create(
-                    name: nameController.text.trim(),
-                    game: gameController.text.trim(),
-                    maxPlayers: int.tryParse(maxPlayersController.text) ?? 8,
-                  );
-              Navigator.pop(context);
-            },
-            child: const Text('إنشاء'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _showCreateDialog(BuildContext context) {
+    var name = '', game = '', maximum = '8', fee = '0';
+    return showOperationDialog(context, title: 'بطولة جديدة', action: 'إنشاء البطولة', fields: [
+      TextFormField(autofocus: true, decoration: const InputDecoration(labelText: 'اسم البطولة'),
+        onChanged: (value) => name = value.trim(),
+        validator: (value) => value == null || value.trim().isEmpty ? 'اكتب اسم البطولة' : null),
+      TextFormField(decoration: const InputDecoration(labelText: 'اللعبة'), onChanged: (value) => game = value.trim()),
+      TextFormField(initialValue: maximum, decoration: const InputDecoration(labelText: 'عدد اللاعبين'),
+        keyboardType: TextInputType.number, onChanged: (value) => maximum = value.trim()),
+      TextFormField(initialValue: fee, decoration: const InputDecoration(labelText: 'رسوم الاشتراك بالجنيه'),
+        keyboardType: TextInputType.number, onChanged: (value) => fee = value.trim()),
+    ], save: () => ref.read(tournamentsControllerProvider).create(
+      name: name, game: game, maxPlayers: int.tryParse(maximum) ?? 0, entryFee: int.tryParse(fee) ?? -1,
+    ));
   }
 }
 
@@ -149,56 +129,55 @@ class _RegistrationView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final nameController = TextEditingController();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('اللاعبين (${players.length}/${tournament.maxPlayers})',
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'اسم اللاعب'),
-                onSubmitted: (v) {
-                  if (v.trim().isNotEmpty) controller.addPlayer(tournament.id, v.trim());
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            FilledButton(
-              onPressed: () {
-                if (nameController.text.trim().isNotEmpty) {
-                  controller.addPlayer(tournament.id, nameController.text.trim());
-                  nameController.clear();
-                }
-              },
-              child: const Text('إضافة'),
-            ),
-          ],
-        ),
+        Card(child: ListTile(
+          title: Text('اللاعبون (${players.length}/${tournament.maxPlayers})'),
+          subtitle: Text('${tournament.game} • اشتراك ${tournament.entryFee} ج'),
+          trailing: FilledButton.icon(
+            onPressed: players.length >= tournament.maxPlayers ? null : () => _add(context),
+            icon: const Icon(Icons.person_add_alt_1), label: const Text('إضافة لاعب'),
+          ),
+        )),
         const SizedBox(height: 16),
         Expanded(
           child: ListView(
-            children: players
-                .map((p) => ListTile(
-                    leading: const Icon(Icons.person, color: Colors.white54),
-                    title: Text(p['name'].toString(), style: const TextStyle(color: Colors.white))))
-                .toList(),
+            children: [
+              for (final player in players) Card(child: ListTile(
+                leading: const Icon(Icons.person_outline),
+                title: Text(player['name'].toString()),
+                subtitle: Text(player['team']?.toString() ?? ''),
+                trailing: IconButton(tooltip: 'إزالة اللاعب', icon: const Icon(Icons.person_remove_outlined),
+                  onPressed: () => showOperationDialog(context, title: 'إزالة ${player['name']}؟',
+                    action: 'إزالة', fields: const [], save: () => controller.removePlayer(tournament.id, player['id'].toString()))),
+              )),
+            ],
           ),
         ),
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: players.length >= 2 ? () => controller.startTournament(tournament.id) : null,
+            onPressed: players.length >= 2 ? () => showOperationDialog(context,
+              title: 'ابدأ البطولة؟', action: 'توليد جدول المباريات',
+              fields: const [Text('التسجيل هيقفل بعد بدء البطولة.')],
+              save: () => controller.startTournament(tournament.id)) : null,
             icon: const Icon(Icons.play_arrow),
             label: const Text('ابدأ البطولة (توليد البراكت)'),
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _add(BuildContext context) {
+    var name = '', team = '';
+    return showOperationDialog(context, title: 'إضافة لاعب', action: 'تسجيل اللاعب', fields: [
+      TextFormField(autofocus: true, decoration: const InputDecoration(labelText: 'اسم اللاعب'),
+        onChanged: (value) => name = value.trim(),
+        validator: (value) => value == null || value.trim().isEmpty ? 'اكتب اسم اللاعب' : null),
+      TextFormField(decoration: const InputDecoration(labelText: 'الفريق (اختياري)'), onChanged: (value) => team = value.trim()),
+    ], save: () => controller.addPlayer(tournament.id, name, team: team));
   }
 }
 
@@ -210,7 +189,16 @@ class _BracketView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    final winnerName = rounds.isEmpty || tournament.status != 'منتهية'
+        ? null : (rounds.last.first as Map)['winner']?['name']?.toString();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (winnerName != null) Card(child: ListTile(
+        leading: const Icon(Icons.emoji_events, color: AppColors.amber),
+        title: Text('بطل البطولة: $winnerName'),
+      )),
+      Expanded(child: SingleChildScrollView(
+        child: SingleChildScrollView(
+
       scrollDirection: Axis.horizontal,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -244,20 +232,22 @@ class _BracketView extends StatelessWidget {
                         child: Column(
                           children: [
                             _PlayerRow(
-                              name: p1['name'].toString(),
+                              name: '${p1['name']}${m['score1'] == null ? '' : '  •  ${m['score1']}'}',
                               isWinner: winner != null && winner['id'] == p1['id'],
-                              onTap: isBye || winner != null || p1['id'] == null
-                                  ? null
-                                  : () => controller.setMatchWinner(tournament.id, roundIndex, matchIndex, p1),
+                              onTap: null,
                             ),
                             const Divider(height: 8),
                             _PlayerRow(
-                              name: p2['name'].toString(),
+                              name: '${p2['name']}${m['score2'] == null ? '' : '  •  ${m['score2']}'}',
                               isWinner: winner != null && winner['id'] == p2['id'],
-                              onTap: isBye || winner != null || p2['id'] == null
-                                  ? null
-                                  : () => controller.setMatchWinner(tournament.id, roundIndex, matchIndex, p2),
+                              onTap: null,
                             ),
+                            if (!isBye && winner == null && roundIndex == tournament.currentRound)
+                              TextButton.icon(
+                                onPressed: () => _score(context, roundIndex, matchIndex, p1, p2),
+                                icon: const Icon(Icons.scoreboard_outlined),
+                                label: const Text('تسجيل النتيجة'),
+                              ),
                           ],
                         ),
                       ),
@@ -269,7 +259,18 @@ class _BracketView extends StatelessWidget {
           );
         }).toList(),
       ),
-    );
+      ))),
+    ]);
+  }
+
+  Future<void> _score(BuildContext context, int round, int match, Map<String, dynamic> first, Map<String, dynamic> second) {
+    var a = '', b = '';
+    return showOperationDialog(context, title: 'نتيجة المباراة', action: 'حفظ النتيجة', fields: [
+      TextFormField(autofocus: true, keyboardType: TextInputType.number,
+        decoration: InputDecoration(labelText: first['name'].toString()), onChanged: (value) => a = value.trim()),
+      TextFormField(keyboardType: TextInputType.number,
+        decoration: InputDecoration(labelText: second['name'].toString()), onChanged: (value) => b = value.trim()),
+    ], save: () => controller.setMatchScore(tournament.id, round, match, int.tryParse(a) ?? -1, int.tryParse(b) ?? -1));
   }
 }
 

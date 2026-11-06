@@ -12,10 +12,10 @@ extension TableLogic on GameTableRow {
 
   int get elapsedSeconds {
     if (startTime == null) return 0;
-    if (isPaused && pauseStartTime != null) {
-      return (pauseStartTime! - startTime!) + addedSeconds;
-    }
-    return (DateTime.now().millisecondsSinceEpoch ~/ 1000 - startTime!) + addedSeconds;
+    final now = isPaused && pauseStartTime != null
+        ? pauseStartTime! : DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final elapsed = now - startTime! + addedSeconds;
+    return elapsed < 0 ? 0 : elapsed;
   }
 
   /// تكلفة الوقت (لو بيتحاسب بالساعة).
@@ -29,8 +29,13 @@ extension TableLogic on GameTableRow {
     return total;
   }
 
+  bool get countdownFinished => isActive && countdownTotalSeconds != null &&
+      elapsedSeconds >= countdownTotalSeconds!;
+
   String timerText() {
-    final s = elapsedSeconds;
+    final elapsed = elapsedSeconds;
+    final remaining = countdownTotalSeconds == null ? elapsed : countdownTotalSeconds! - elapsed;
+    final s = remaining < 0 ? 0 : remaining;
     final h = s ~/ 3600;
     final m = (s % 3600) ~/ 60;
     final sec = s % 60;

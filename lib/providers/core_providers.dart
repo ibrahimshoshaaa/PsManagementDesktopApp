@@ -1,28 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' show OrderingTerm;
 import '../data/local/database.dart';
-import '../data/remote/sync_service.dart';
-import '../data/remote/subscription_service.dart';
-import '../data/remote/audit_log_service.dart';
-import '../data/remote/firebase_service.dart';
+import '../data/local/audit_log_service.dart';
 
 /// قاعدة البيانات — instance واحدة طول عمر التطبيق.
 final databaseProvider = Provider<AppDatabase>((ref) {
   final db = AppDatabase();
   ref.onDispose(db.close);
   return db;
-});
-
-final subscriptionServiceProvider = Provider<SubscriptionService>((ref) {
-  return SubscriptionService(ref.watch(databaseProvider));
-});
-
-/// خدمة المزامنة — instance واحدة، بتتشغل (start) بعد التفعيل ونجاح تسجيل
-/// الدخول، وبتتوقف (stop) لو حصل logout كامل من المحل (نادر).
-final syncServiceProvider = Provider<SyncService>((ref) {
-  final service = SyncService(ref.watch(databaseProvider));
-  ref.onDispose(service.stop);
-  return service;
 });
 
 // ── إعدادات المحل (stream) ─────────────────────────────────────────────────
@@ -51,13 +36,13 @@ class SessionNotifier extends Notifier<SessionState> {
 
   void loginAsAdmin() {
     state = const SessionState(role: UserRole.admin);
-    AuditLogService.configure(shopId: FirebaseService.currentShopId, cashierName: null, isAdmin: true);
+    AuditLogService.configure(database: ref.read(databaseProvider), cashierName: null, isAdmin: true);
     AuditLogService.log(action: AuditAction.login, actionDetails: 'دخول الأدمن');
   }
 
   void loginAsCashier(String name) {
     state = SessionState(role: UserRole.cashier, cashierName: name);
-    AuditLogService.configure(shopId: FirebaseService.currentShopId, cashierName: name, isAdmin: false);
+    AuditLogService.configure(database: ref.read(databaseProvider), cashierName: name, isAdmin: false);
     AuditLogService.log(action: AuditAction.login, actionDetails: 'دخول الكاشير $name');
   }
 
@@ -89,6 +74,11 @@ final pricesStreamProvider = StreamProvider<List<PriceRow>>((ref) {
 
 final cashiersStreamProvider = StreamProvider<List<CashierRow>>((ref) {
   return ref.watch(databaseProvider).watchCashiers();
+});
+
+final localCustomersStreamProvider = StreamProvider.autoDispose<List<LocalCustomer>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.select(db.localCustomers).watch();
 });
 
 final menuItemsStreamProvider = StreamProvider<List<MenuItemRow>>((ref) {

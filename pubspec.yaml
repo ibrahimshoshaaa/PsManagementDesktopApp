@@ -21,16 +21,13 @@ dependencies:
   path_provider: ^2.1.4
   path: ^1.9.0
 
-  # ── Firebase REST sync (مزامنة مع الموبايل) ──
-  http: ^1.2.2
 
-  # ── License system (HMAC-SHA256 + AES-128-CTR) ──
   crypto: ^3.0.5
-  pointycastle: ^3.9.1
+  cryptography: ^2.7.0
+  file_selector: ^1.0.3
 
   # ── PDF / Excel export ──
   pdf: ^3.11.1
-  printing: ^5.13.3
   excel: ^4.0.6
 
   # ── Misc ──
@@ -39,7 +36,6 @@ dependencies:
   window_manager: ^0.4.3   # للتحكم في نافذة الويندوز (maximized عند الفتح)
 
   cupertino_icons: ^1.0.8
-  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

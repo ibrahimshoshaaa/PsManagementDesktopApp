@@ -1,3 +1,8 @@
+import '../shared/screen_ui.dart';
+
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,11 +13,19 @@ import '../../services/export/pdf_export_service.dart';
 import '../../services/export/excel_export_service.dart';
 import '../../services/export/export_paths.dart';
 
-class HistoryScreen extends ConsumerWidget {
+class HistoryScreen extends ConsumerStatefulWidget {
   const HistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends ConsumerState<HistoryScreen> {
+  String _query = '';
+  DateTime? _date;
+
+  @override
+  Widget build(BuildContext context) {
     final historyAsync = ref.watch(historyStreamProvider);
 
     return historyAsync.when(
@@ -25,6 +38,11 @@ class HistoryScreen extends ConsumerWidget {
           return d != null && d.year == today.year && d.month == today.month && d.day == today.day;
         }).toList();
 
+        final visible = records.where((row) {
+          final date = DateTime.tryParse(row.createdAt)?.toLocal();
+          return (_date == null || DateUtils.isSameDay(date, _date)) &&
+              '${row.name} ${row.cashier ?? ''} ${row.rowId}'.toLowerCase().contains(_query);
+        }).toList();
         final totalToday = todayRecords.fold<double>(0, (sum, r) => sum + r.total);
         final timeToday = todayRecords.fold<double>(0, (sum, r) => sum + r.timeCost);
         final buffetToday = todayRecords.fold<double>(0, (sum, r) => sum + r.buffetCost);
@@ -34,18 +52,17 @@ class HistoryScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const Text('السجل', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const Spacer(),
-                  OutlinedButton.icon(
+          ScreenIntro(
+            icon: Icons.receipt_long_outlined, title: 'سجل الفواتير',
+            description: 'اضغط على فاتورة عشان تشوف تفاصيلها أو تفتحها للطباعة.',
+            actions: [
+              OutlinedButton.icon(
                     onPressed: () => _exportPdf(context, ref, shopName: ref.read(appConfigProvider).valueOrNull?.shopName ?? '', todayRecords: todayRecords),
                     icon: const Icon(Icons.picture_as_pdf, size: 18),
                     label: const Text('PDF'),
                   ),
-                  const SizedBox(width: 8),
                   OutlinedButton.icon(
-                    onPressed: () => _exportExcel(context, ref, records),
+                    onPressed: () => _exportExcel(context, ref, visible),
                     icon: const Icon(Icons.table_chart, size: 18),
                     label: const Text('Excel'),
                   ),
@@ -63,15 +80,33 @@ class HistoryScreen extends ConsumerWidget {
                   _StatCard(label: 'عدد الجلسات', value: '${todayRecords.length}', color: AppColors.amber),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 14),
+              Row(children: [
+                Expanded(child: TextField(
+                  onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
+                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search), labelText: 'ابحث باسم الجهاز أو الكاشير أو رقم الفاتورة'),
+                )),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final date = await showDatePicker(context: context, initialDate: _date ?? today,
+                      firstDate: DateTime(2000), lastDate: today);
+                    if (date != null && mounted) setState(() => _date = date);
+                  },
+                  icon: const Icon(Icons.calendar_today_outlined),
+                  label: Text(_date == null ? 'كل التواريخ' : '${_date!.day}/${_date!.month}/${_date!.year}'),
+                ),
+                if (_date != null) IconButton(tooltip: 'إلغاء الفلتر', onPressed: () => setState(() => _date = null), icon: const Icon(Icons.clear)),
+              ]),
+              const SizedBox(height: 12),
               Expanded(
-                child: records.isEmpty
-                    ? const Center(child: Text('مفيش سجلات لسه', style: TextStyle(color: Colors.white38)))
+                child: visible.isEmpty
+                    ? const ScreenEmpty(icon: Icons.receipt_long_outlined, title: 'مفيش سجلات لسه', hint: 'جرّب تغيّر البحث أو التاريخ، أو اقفل جلسة عشان تظهر أول فاتورة.')
                     : ListView.separated(
-                        itemCount: records.length,
+                        itemCount: visible.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (context, i) {
-                          final r = records[i];
+                          final r = visible[i];
                           IconData icon;
                           switch (r.deviceType) {
                             case 'table':
@@ -85,6 +120,7 @@ class HistoryScreen extends ConsumerWidget {
                           }
                           return ListTile(
                             leading: Icon(icon, color: Colors.white54),
+                            onTap: () => _preview(r),
                             title: Text(r.name, style: const TextStyle(color: Colors.white)),
                             subtitle: Text(r.date, style: TextStyle(color: Colors.white.withOpacity(0.4))),
                             trailing: Text(
@@ -100,6 +136,58 @@ class HistoryScreen extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _preview(HistoryRecordRow record) async {
+    final db = ref.read(databaseProvider);
+    final id = record.localCustomerId;
+    final customer = id == null ? null :
+        await (db.select(db.localCustomers)..where((row) => row.id.equals(id))).getSingleOrNull();
+    if (!mounted) return;
+    final shop = ref.read(appConfigProvider).valueOrNull?.shopName ?? '';
+    final orders = Map<String, dynamic>.from(jsonDecode(record.ordersJson) as Map);
+    var busy = false;
+    await showDialog<void>(context: context, builder: (dialog) => StatefulBuilder(
+      builder: (context, redraw) => AlertDialog(
+        title: Text('فاتورة رقم ${record.rowId} • ${record.name}'),
+        content: SizedBox(width: 460, child: SingleChildScrollView(child: Column(
+          mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(record.date),
+            if (record.cashier != null) Text('الكاشير: ${record.cashier}'),
+            if (customer != null) Text('العميل: ${customer.name}'),
+            const Divider(),
+            for (final item in orders.entries) ListTile(contentPadding: EdgeInsets.zero,
+              title: Text(item.key), trailing: Text('× ${item.value}')),
+            Text('اللعب: ${record.timeCost.toStringAsFixed(2)} ج'),
+            Text('البوفيه: ${record.buffetCost.toStringAsFixed(2)} ج'),
+            Text('الإجمالي: ${record.total.toStringAsFixed(2)} ج',
+              style: const TextStyle(color: AppColors.accent, fontSize: 20, fontWeight: FontWeight.bold)),
+          ],
+        ))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog), child: const Text('رجوع')),
+          FilledButton.icon(
+            onPressed: busy ? null : () async {
+              redraw(() => busy = true);
+              try {
+                final path = await PdfExportService.exportInvoice(shopName: shop, record: record, customerName: customer?.name);
+                if (Platform.isWindows) await Process.start('explorer.exe', [path]);
+                if (context.mounted) _showSavedSnackbar(context, path);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر فتح ملف الفاتورة')));
+                }
+              } finally {
+                if (context.mounted) redraw(() => busy = false);
+              }
+            },
+            icon: const Icon(Icons.print_outlined),
+            label: const Text('فتح PDF للطباعة'),
+          ),
+        ],
+      ),
+    ));
   }
 
   Future<void> _exportPdf(BuildContext context, WidgetRef ref,

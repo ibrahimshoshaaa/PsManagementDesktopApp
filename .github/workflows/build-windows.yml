@@ -2,7 +2,7 @@ name: Build Windows
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, codex/desktop-offline]
     tags: ["v*"]
   pull_request:
     branches: [main, master]
@@ -74,8 +74,14 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
         continue-on-error: true
 
+      - name: Verify offline licensing, billing, and UI
+        if: github.head_ref == 'codex/desktop-offline' || github.ref_name == 'codex/desktop-offline'
+        run: flutter test test/license_token_test.dart test/offline_billing_test.dart test/offline_ui_test.dart
+
       - name: Build Windows release
-        run: flutter build windows --release
+        env:
+          PS_LICENSE_PUBLIC_KEY: ${{ vars.PS_LICENSE_PUBLIC_KEY }}
+        run: flutter build windows --release "--dart-define=PS_LICENSE_PUBLIC_KEY=$env:PS_LICENSE_PUBLIC_KEY"
 
       - name: Zip release build
         shell: pwsh
@@ -99,3 +105,27 @@ jobs:
           files: psapp-windows.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-license-manager:
+    if: github.head_ref == 'codex/desktop-offline' || github.ref_name == 'codex/desktop-offline'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install issuer build dependencies
+        run: python -m pip install cryptography pyinstaller
+      - name: Build the standalone License Manager
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name PS-License-Manager tools/license_manager_gui.py
+      - name: Verify the executable can generate a signed license file
+        shell: pwsh
+        run: |
+          $result = Start-Process -FilePath (Resolve-Path "dist/PS-License-Manager.exe") -ArgumentList "--self-test" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { exit $result.ExitCode }
+      - name: Upload License Manager separately from the customer app
+        uses: actions/upload-artifact@v4
+        with:
+          name: PS-License-Manager
+          path: dist/PS-License-Manager.exe
+          retention-days: 30

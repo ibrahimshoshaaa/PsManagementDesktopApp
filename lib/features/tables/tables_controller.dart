@@ -3,7 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/local/database.dart';
-import '../../data/remote/audit_log_service.dart';
+import '../../data/local/audit_log_service.dart';
 import '../../domain/table_logic.dart';
 import '../../providers/core_providers.dart';
 
@@ -15,29 +15,29 @@ class TablesController {
 
   AppDatabase get _db => ref.read(databaseProvider);
 
-  void _schedulePush() => ref.read(syncServiceProvider).schedulePushTables();
 
-  Future<void> start(int tableId) async {
+  Future<void> start(int tableId, {int? minutes, int? customerId}) async {
+    if (minutes != null && (minutes < 1 || minutes > 1440)) throw StateError('راجع مدة الجلسة.');
     final table = await (_db.select(_db.gameTables)..where((t) => t.tableId.equals(tableId))).getSingleOrNull();
-    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId))).write(
+    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId) & t.startTime.isNull())).write(
       GameTablesCompanion(
         startTime: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
         isPaused: const Value(false),
-        pauseStartTime: const Value.absent(),
+        pauseStartTime: const Value(null),
+        countdownTotalSeconds: Value(minutes == null ? null : minutes * 60),
+        localCustomerId: Value(customerId),
       ),
     );
-    _schedulePush();
     if (table != null) AuditLogService.logTable(action: AuditAction.tableStart, tableName: table.name);
   }
 
   Future<void> pause(int tableId) async {
-    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId))).write(
+    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId) & t.startTime.isNotNull() & t.isPaused.equals(false))).write(
       GameTablesCompanion(
         isPaused: const Value(true),
         pauseStartTime: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
       ),
     );
-    _schedulePush();
   }
 
   Future<void> resume(int tableId) async {
@@ -48,44 +48,88 @@ class TablesController {
     await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId))).write(
       GameTablesCompanion(
         isPaused: const Value(false),
-        pauseStartTime: const Value.absent(),
+        pauseStartTime: const Value(null),
         startTime: Value(table.startTime! + pausedDuration),
       ),
     );
-    _schedulePush();
   }
 
-  /// إلغاء الجلسة من غير حساب.
-  Future<void> cancel(int tableId) async {
-    final table = await (_db.select(_db.gameTables)..where((t) => t.tableId.equals(tableId))).getSingleOrNull();
-    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId)))
-        .write(const GameTablesCompanion(isPaused: Value(false), ordersJson: Value('{}')));
-    await _db.customStatement(
-      'UPDATE game_tables SET start_time = NULL, pause_start_time = NULL, added_seconds = 0 WHERE table_id = ?',
-      [tableId],
+  Future<void> cancel(int tableId) => _db.transaction(() async {
+    if (ref.read(sessionProvider).role != UserRole.admin) return;
+    final table = await (_db.select(_db.gameTables)..where((row) => row.tableId.equals(tableId))).getSingleOrNull();
+    if (table == null || table.startTime == null) return;
+    await (_db.update(_db.gameTables)..where((row) => row.tableId.equals(tableId))).write(_empty);
+    AuditLogService.logTable(action: AuditAction.tableCancel, tableName: table.name);
+  });
+
+  Future<bool> transfer(int sourceId, int destinationId) => _db.transaction(() async {
+    if (sourceId == destinationId) return false;
+    final source = await (_db.select(_db.gameTables)..where((row) => row.tableId.equals(sourceId))).getSingleOrNull();
+    final destination = await (_db.select(_db.gameTables)..where((row) => row.tableId.equals(destinationId))).getSingleOrNull();
+    if (source == null || destination == null || source.startTime == null ||
+        destination.startTime != null || destination.ordersJson != '{}' ||
+        source.rate != destination.rate || source.gamePrice != destination.gamePrice) return false;
+    await (_db.update(_db.gameTables)..where((row) => row.tableId.equals(destinationId)))
+        .write(GameTablesCompanion(
+      startTime: Value(source.startTime), pauseStartTime: Value(source.pauseStartTime),
+      addedSeconds: Value(source.addedSeconds), isPaused: Value(source.isPaused),
+      ordersJson: Value(source.ordersJson), sessionLogJson: Value(source.sessionLogJson),
+      countdownTotalSeconds: Value(source.countdownTotalSeconds), localCustomerId: Value(source.localCustomerId),
+    ));
+    await (_db.update(_db.gameTables)..where((row) => row.tableId.equals(sourceId))).write(_empty);
+    return true;
+  });
+
+  Future<bool> recordGame(int tableId, {int? customerId}) => _db.transaction(() async {
+    final row = await (_db.select(_db.gameTables)..where((row) => row.tableId.equals(tableId))).getSingleOrNull();
+    if (row == null || row.startTime != null || row.gamePrice <= 0) return false;
+    final now = DateTime.now().toIso8601String();
+    final price = row.gamePrice.toDouble();
+    await _db.into(_db.historyRecords).insert(HistoryRecordsCompanion.insert(
+      name: row.name, deviceType: const Value('table'), isGame: const Value(true),
+      total: price, timeCost: Value(price), date: now, createdAt: now, localCustomerId: Value(customerId),
+      cashier: Value(ref.read(sessionProvider).cashierName ?? 'أدمن'),
+    ));
+    await _db.recordCustomerVisit(customerId, price, now);
+    AuditLogService.logTable(action: AuditAction.tableGameRecord, tableName: row.name);
+    return true;
+  });
+
+  static const _empty = GameTablesCompanion(
+    startTime: Value(null), pauseStartTime: Value(null), addedSeconds: Value(0),
+    isPaused: Value(false), ordersJson: Value('{}'), sessionLogJson: Value('[]'),
+    countdownTotalSeconds: Value(null), localCustomerId: Value(null),
+  );
+
+  Future<void> adjustMinutes(int id, int minutes) => _db.transaction(() async {
+    final row = await (_db.select(_db.gameTables)..where((table) => table.tableId.equals(id))).getSingleOrNull();
+    if (row == null || !row.isActive) return;
+    final fixed = row.countdownTotalSeconds;
+    final elapsed = row.elapsedSeconds;
+    final difference = (elapsed + minutes * 60).clamp(0, 1 << 32).toInt() - elapsed;
+    await (_db.update(_db.gameTables)..where((table) => table.tableId.equals(id))).write(
+      fixed == null
+          ? GameTablesCompanion(addedSeconds: Value(row.addedSeconds + difference))
+          : GameTablesCompanion(countdownTotalSeconds: Value((fixed + minutes * 60).clamp(0, 1 << 32).toInt())),
     );
-    _schedulePush();
-    if (table != null) AuditLogService.logTable(action: AuditAction.tableCancel, tableName: table.name);
-  }
+  });
 
-  Future<void> addOrder(int tableId, String itemName, int deltaQty) async {
-    final table = await (_db.select(_db.gameTables)..where((t) => t.tableId.equals(tableId))).getSingle();
-    final orders = Map<String, int>.from(jsonDecode(table.ordersJson) as Map);
-    final newQty = (orders[itemName] ?? 0) + deltaQty;
-    if (newQty <= 0) {
-      orders.remove(itemName);
-    } else {
-      orders[itemName] = newQty;
-    }
-    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId)))
+  Future<void> addOrder(int tableId, String itemName, int deltaQty) =>
+      addOrders(tableId, {itemName: deltaQty});
+
+  Future<void> addOrders(int tableId, Map<String, int> changes) => _db.transaction(() async {
+    final table = await (_db.select(_db.gameTables)..where((row) => row.tableId.equals(tableId))).getSingle();
+    if (table.startTime == null) throw StateError('ابدأ جلسة التربيزة الأول.');
+    final orders = await _db.changeBuffetOrders(table.ordersJson, changes);
+    await (_db.update(_db.gameTables)..where((row) => row.tableId.equals(tableId)))
         .write(GameTablesCompanion(ordersJson: Value(jsonEncode(orders))));
-    _schedulePush();
-  }
+  });
 
   /// إنهاء الجلسة — [byGame] لو true بيتحاسب بسعر اللعبة الثابت (game_price)
   /// بدل سعر الساعة.
-  Future<Map<String, dynamic>> stop(int tableId, {required bool byGame}) async {
+  Future<Map<String, dynamic>?> stop(int tableId, {required bool byGame}) => _db.transaction(() async {
     final table = await (_db.select(_db.gameTables)..where((t) => t.tableId.equals(tableId))).getSingle();
+    if (table.startTime == null || (byGame && table.gamePrice <= 0)) return null;
     final menu = {for (final m in await _db.select(_db.menuItems).get()) m.itemName: m.price};
     final orders = Map<String, int>.from(jsonDecode(table.ordersJson) as Map);
 
@@ -104,49 +148,21 @@ class TablesController {
             timeCost: Value(timeCost),
             buffetCost: Value(buffetCost),
             elapsedSeconds: Value(elapsed),
+            localCustomerId: Value(table.localCustomerId),
             ordersJson: Value(jsonEncode(orders)),
+            cashier: Value(ref.read(sessionProvider).cashierName ?? 'أدمن'),
             date: DateTime.now().toString(),
             createdAt: DateTime.now().toIso8601String(),
           ),
         );
 
-    for (final entry in orders.entries) {
-      final existing = await (_db.select(_db.dailyInventorySummary)..where((t) => t.itemName.equals(entry.key)))
-          .getSingleOrNull();
-      await _db.into(_db.dailyInventorySummary).insertOnConflictUpdate(
-            DailyInventorySummaryCompanion.insert(
-              itemName: entry.key,
-              quantitySold: Value((existing?.quantitySold ?? 0) + entry.value),
-            ),
-          );
-    }
+    await _db.deductSoldItems(orders);
+    await _db.recordCustomerVisit(table.localCustomerId, total, DateTime.now().toIso8601String());
 
-    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId))).write(
-      const GameTablesCompanion(
-        isPaused: Value(false),
-        ordersJson: Value('{}'),
-      ),
-    );
-    await _db.customStatement(
-      'UPDATE game_tables SET start_time = NULL, pause_start_time = NULL, added_seconds = 0 WHERE table_id = ?',
-      [tableId],
-    );
+    await (_db.update(_db.gameTables)..where((row) => row.tableId.equals(tableId))).write(_empty);
 
-    _schedulePush();
-    await ref.read(syncServiceProvider).appendHistoryRecord({
-      'name': table.name,
-      'device_type': 'table',
-      'is_match': false,
-      'is_game': byGame,
-      'total': total,
-      'time_cost': timeCost,
-      'buffet_cost': buffetCost,
-      'elapsed_seconds': elapsed,
-      'orders': orders,
-      'date': DateTime.now().toString(),
-    });
     AuditLogService.logTable(action: AuditAction.tableStop, tableName: table.name, extra: '${total.toStringAsFixed(1)} ج');
 
     return {'total': total, 'time_cost': timeCost, 'buffet_cost': buffetCost};
-  }
+  });
 }

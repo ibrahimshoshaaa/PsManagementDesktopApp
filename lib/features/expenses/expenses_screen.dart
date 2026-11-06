@@ -1,8 +1,12 @@
+import '../shared/screen_ui.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' show OrderingTerm;
 
 import '../../core/theme/app_colors.dart';
+import '../../data/local/database.dart';
+import '../shared/operation_dialog.dart';
 import '../../providers/core_providers.dart';
 import '../../services/export/excel_export_service.dart';
 import '../../services/export/export_paths.dart';
@@ -35,14 +39,11 @@ class ExpensesScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const Text('المصروفات', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const Spacer(),
-                  Text('إجمالي الشهر: ${totalMonth.toStringAsFixed(1)} ج',
-                      style: const TextStyle(color: AppColors.orange, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 16),
-                  OutlinedButton.icon(
+          ScreenIntro(
+            icon: Icons.payments_outlined, title: 'المصروفات',
+            description: 'إجمالي الشهر: ${totalMonth.toStringAsFixed(2)} ج',
+            actions: [
+              OutlinedButton.icon(
                     onPressed: () async {
                       final path = await ExcelExportService.exportExpenses(expenses);
                       if (context.mounted) {
@@ -54,9 +55,8 @@ class ExpensesScreen extends ConsumerWidget {
                     icon: const Icon(Icons.table_chart, size: 18),
                     label: const Text('Excel'),
                   ),
-                  const SizedBox(width: 16),
                   FilledButton.icon(
-                    onPressed: () => _showAddDialog(context, ref, categoriesAsync.valueOrNull ?? []),
+                    onPressed: () => _edit(context, ref, categoriesAsync.valueOrNull ?? []),
                     icon: const Icon(Icons.add),
                     label: const Text('مصروف جديد'),
                   ),
@@ -65,7 +65,7 @@ class ExpensesScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               Expanded(
                 child: expenses.isEmpty
-                    ? const Center(child: Text('مفيش مصروفات مسجلة', style: TextStyle(color: Colors.white38)))
+                    ? const ScreenEmpty(icon: Icons.payments_outlined, title: 'مفيش مصروفات مسجلة', hint: 'اضغط مصروف جديد عشان تسجل المبلغ والفئة والتاريخ.')
                     : ListView.separated(
                         itemCount: expenses.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),
@@ -74,6 +74,7 @@ class ExpensesScreen extends ConsumerWidget {
                           return ListTile(
                             leading: const Icon(Icons.payments, color: AppColors.orange),
                             title: Text(e.title, style: const TextStyle(color: Colors.white)),
+                            onTap: () => _edit(context, ref, categoriesAsync.valueOrNull ?? [], e),
                             subtitle: Text('${e.category} · ${e.date}${e.addedBy.isNotEmpty ? " · ${e.addedBy}" : ""}',
                                 style: TextStyle(color: Colors.white.withOpacity(0.4))),
                             trailing: Row(
@@ -83,7 +84,11 @@ class ExpensesScreen extends ConsumerWidget {
                                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.red),
-                                  onPressed: () => ref.read(expensesControllerProvider).delete(e.id),
+                                  onPressed: () => showOperationDialog(context,
+                                    title: 'حذف مصروف ${e.title}؟', action: 'حذف',
+                                    fields: [Text('${e.amount.toStringAsFixed(2)} ج • ${e.date}')],
+                                    save: () => ref.read(expensesControllerProvider).delete(e.id),
+                                  ),
                                 ),
                               ],
                             ),
@@ -98,59 +103,58 @@ class ExpensesScreen extends ConsumerWidget {
     );
   }
 
-  void _showAddDialog(BuildContext context, WidgetRef ref, List<String> categories) {
-    final titleController = TextEditingController();
-    final amountController = TextEditingController();
-    final noteController = TextEditingController();
-    String? selectedCategory = categories.isNotEmpty ? categories.first : null;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('مصروف جديد'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: titleController, decoration: const InputDecoration(labelText: 'البيان')),
-              const SizedBox(height: 12),
-              TextField(
-                controller: amountController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'المبلغ'),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: selectedCategory,
-                decoration: const InputDecoration(labelText: 'الفئة'),
-                items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                onChanged: (v) => setState(() => selectedCategory = v),
-              ),
-              const SizedBox(height: 12),
-              TextField(controller: noteController, decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)')),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            FilledButton(
-              onPressed: () {
-                final amount = double.tryParse(amountController.text);
-                if (titleController.text.trim().isEmpty || amount == null || selectedCategory == null) return;
-                final session = ref.read(sessionProvider);
-                ref.read(expensesControllerProvider).add(
-                      title: titleController.text.trim(),
-                      amount: amount,
-                      category: selectedCategory!,
-                      addedBy: session.cashierName ?? 'admin',
-                      note: noteController.text.trim().isEmpty ? null : noteController.text.trim(),
-                    );
-                Navigator.pop(context);
-              },
-              child: const Text('حفظ'),
-            ),
-          ],
-        ),
-      ),
+  Future<void> _edit(BuildContext context, WidgetRef ref, List<String> categories, [ExpenseRow? original]) {
+    final choices = {if (original != null) original.category, ...categories, 'أخرى'}.toList();
+    var title = original?.title ?? '';
+    var amount = original?.amount.toString() ?? '';
+    var note = original?.note ?? '';
+    var category = original?.category ?? choices.first;
+    var date = DateTime.now();
+    if (original != null) {
+      final pieces = original.date.split('/').map(int.tryParse).toList();
+      if (pieces.length == 3 && pieces.every((part) => part != null)) {
+        date = DateTime(pieces[2]!, pieces[1]!, pieces[0]!);
+      }
+    }
+    return showOperationDialog(
+      context,
+      title: original == null ? 'تسجيل مصروف جديد' : 'تعديل المصروف',
+      action: 'حفظ المصروف',
+      fields: [
+        TextFormField(initialValue: title, autofocus: true,
+          decoration: const InputDecoration(labelText: 'بيان المصروف', prefixIcon: Icon(Icons.description_outlined)),
+          onChanged: (value) => title = value.trim(),
+          validator: (value) => value == null || value.trim().isEmpty ? 'اكتب بيان المصروف' : null),
+        TextFormField(initialValue: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'المبلغ بالجنيه', prefixIcon: Icon(Icons.payments_outlined)),
+          onChanged: (value) => amount = value,
+          validator: (value) => parseMoney(value ?? '') == null ? 'اكتب مبلغًا أكبر من صفر' : null),
+        DropdownButtonFormField<String>(value: category, isExpanded: true,
+          decoration: const InputDecoration(labelText: 'فئة المصروف'),
+          items: [for (final choice in choices) DropdownMenuItem(value: choice, child: Text(choice))],
+          onChanged: (value) { if (value != null) category = value; }),
+        StatefulBuilder(builder: (context, redraw) => OutlinedButton.icon(
+          icon: const Icon(Icons.calendar_today_outlined),
+          label: Text('تاريخ المصروف: ${date.day}/${date.month}/${date.year}'),
+          onPressed: () async {
+            final picked = await showDatePicker(context: context, initialDate: date,
+              firstDate: DateTime(2000), lastDate: DateTime.now());
+            if (picked != null && context.mounted) redraw(() => date = picked);
+          },
+        )),
+        TextFormField(initialValue: note, maxLines: 2,
+          decoration: const InputDecoration(labelText: 'ملاحظات (اختياري)'),
+          onChanged: (value) => note = value.trim()),
+      ],
+      save: () {
+        final controller = ref.read(expensesControllerProvider);
+        final value = parseMoney(amount)!;
+        return original == null
+            ? controller.add(title: title, amount: value, category: category, date: date,
+                addedBy: ref.read(sessionProvider).cashierName ?? 'أدمن', note: note.isEmpty ? null : note)
+            : controller.edit(original, title: title, amount: value, category: category, date: date,
+                note: note.isEmpty ? null : note);
+      },
     );
   }
 }

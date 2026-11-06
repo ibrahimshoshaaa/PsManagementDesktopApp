@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'connection.dart';
 import 'seed_data.dart';
@@ -43,6 +45,10 @@ class Devices extends Table {
   BoolColumn get countdownAlertSent => boolean().withDefault(const Constant(false))();
   TextColumn get sessionLogJson => text().withDefault(const Constant('[]'))();
 
+  RealColumn get settledTimeCost => real().withDefault(const Constant(0))();
+  IntColumn get segmentStartSeconds => integer().withDefault(const Constant(0))();
+  IntColumn get localCustomerId => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {deviceId};
 }
@@ -62,6 +68,9 @@ class GameTables extends Table {
   IntColumn get pauseStartTime => integer().nullable()();
   TextColumn get ordersJson => text().withDefault(const Constant('{}'))();
   TextColumn get sessionLogJson => text().withDefault(const Constant('[]'))();
+
+  IntColumn get countdownTotalSeconds => integer().nullable()();
+  IntColumn get localCustomerId => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {tableId};
@@ -93,6 +102,9 @@ class AppConfig extends Table {
   BoolColumn get historyPasswordEnabled => boolean().withDefault(const Constant(true))();
   BoolColumn get matchEnabled => boolean().withDefault(const Constant(true))();
   IntColumn get numDevices => integer().withDefault(const Constant(0))();
+
+  BoolColumn get gameTablesEnabled => boolean().withDefault(const Constant(true))();
+  BoolColumn get drinkTablesEnabled => boolean().withDefault(const Constant(true))();
 
   BoolColumn get rechargeEnabled => boolean().withDefault(const Constant(false))();
   IntColumn get rechargeBalance => integer().withDefault(const Constant(0))();
@@ -234,6 +246,8 @@ class Tournaments extends Table {
 @DataClassName('HistoryRecordRow')
 class HistoryRecords extends Table {
   IntColumn get rowId => integer().autoIncrement()();
+  IntColumn get localCustomerId => integer().nullable()();
+  TextColumn get cashier => text().nullable()();
   TextColumn get remoteKey => text().nullable()(); // مفتاح الـ push في Firebase لو اتزامن
   TextColumn get name => text()();
   TextColumn get deviceType => text().nullable()(); // json: device_type ('drink_table' لتربيزات المشروبات)
@@ -327,6 +341,30 @@ class SubscriptionCache extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('LocalCustomer')
+class LocalCustomers extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()();
+  TextColumn get phone => text().unique()();
+  IntColumn get visits => integer().withDefault(const Constant(0))();
+  RealColumn get totalSpent => real().withDefault(const Constant(0))();
+  TextColumn get lastVisit => text().withDefault(const Constant(''))();
+}
+
+class LocalAuditEvents extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get entryJson => text()();
+}
+
+class DesktopLicenses extends Table {
+  IntColumn get id => integer()();
+  TextColumn get token => text()();
+  IntColumn get lastSeenUtcMs => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DriftDatabase(tables: [
   Devices,
   GameTables,
@@ -351,6 +389,9 @@ class SubscriptionCache extends Table {
   DailyArchives,
   YearlyArchives,
   SubscriptionCache,
+  LocalCustomers,
+  LocalAuditEvents,
+  DesktopLicenses,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(openConnection());
@@ -359,7 +400,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -367,8 +408,95 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
           await seedDefaults(this);
         },
-        // لما تضيف جدول/عمود جديد لاحقًا: زوّد schemaVersion وضيف onUpgrade هنا.
+        onUpgrade: (m, from, to) async {
+          if (from < 2) await m.addColumn(historyRecords, historyRecords.cashier);
+          if (from < 3) {
+            await m.createTable(localCustomers);
+            await m.createTable(localAuditEvents);
+          }
+          if (from < 4) await m.createTable(desktopLicenses);
+          if (from < 5) {
+            await m.addColumn(devices, devices.settledTimeCost);
+            await m.addColumn(devices, devices.segmentStartSeconds);
+            await m.addColumn(devices, devices.localCustomerId);
+            await m.addColumn(historyRecords, historyRecords.localCustomerId);
+          }
+          if (from < 6) {
+            await m.addColumn(gameTables, gameTables.countdownTotalSeconds);
+            await m.addColumn(gameTables, gameTables.localCustomerId);
+          }
+          if (from < 7) {
+            await m.addColumn(appConfig, appConfig.gameTablesEnabled);
+            await m.addColumn(appConfig, appConfig.drinkTablesEnabled);
+          }
+        },
       );
+
+  Future<void> recordCustomerVisit(int? id, double total, String date) async {
+    if (id == null) return;
+    final customer = await (select(localCustomers)..where((row) => row.id.equals(id))).getSingleOrNull();
+    if (customer == null) return;
+    await (update(localCustomers)..where((row) => row.id.equals(id))).write(
+      LocalCustomersCompanion(
+        visits: Value(customer.visits + 1), totalSpent: Value(customer.totalSpent + total), lastVisit: Value(date),
+      ),
+    );
+  }
+
+  /// The caller saves the resulting quantities in the same transaction.
+  Future<Map<String, int>> changeBuffetOrders(String ordersJson, Map<String, int> changes) async {
+    final orders = Map<String, int>.from(jsonDecode(ordersJson) as Map);
+    final additions = changes.entries.where((entry) => entry.value > 0).toList();
+    if (additions.isNotEmpty) {
+      final stock = {for (final row in await select(inventoryItems).get()) row.itemName: row.quantity};
+      final menu = {for (final row in await select(menuItems).get()) row.itemName};
+      final reserved = <String, int>{};
+      if (additions.any((entry) => stock.containsKey(entry.key))) {
+        final openOrders = [
+          for (final row in await select(devices).get()) row.ordersJson,
+          for (final row in await select(gameTables).get()) row.ordersJson,
+          for (final row in await select(drinkTables).get()) row.ordersJson,
+        ];
+        for (final json in openOrders) {
+          final lines = Map<String, int>.from(jsonDecode(json) as Map);
+          for (final entry in lines.entries) {
+            reserved.update(entry.key, (count) => count + entry.value, ifAbsent: () => entry.value);
+          }
+        }
+      }
+      for (final addition in additions) {
+        final name = addition.key;
+        if (!menu.contains(name)) throw StateError('الصنف $name مش موجود في المنيو.');
+        final quantity = stock[name];
+        if (quantity != null && (reserved[name] ?? 0) + addition.value > quantity) {
+          throw StateError('المخزون المتاح من $name أقل من الكمية المطلوبة.');
+        }
+      }
+    }
+    for (final change in changes.entries) {
+      final quantity = (orders[change.key] ?? 0) + change.value;
+      if (quantity > 0) {
+        orders[change.key] = quantity;
+      } else {
+        orders.remove(change.key);
+      }
+    }
+    return orders;
+  }
+
+  /// Called inside the same transaction as receipt creation and session reset.
+  Future<void> deductSoldItems(Map<String, int> orders) async {
+    for (final entry in orders.entries) {
+      if (entry.value <= 0) continue;
+      final row = await (select(inventoryItems)
+            ..where((item) => item.itemName.equals(entry.key)))
+          .getSingleOrNull();
+      if (row == null) continue;
+      final remaining = row.quantity - entry.value;
+      await (update(inventoryItems)..where((item) => item.itemName.equals(entry.key)))
+          .write(InventoryItemsCompanion(quantity: Value(remaining < 0 ? 0 : remaining)));
+    }
+  }
 
   // ── Streams جاهزة هيتم استخدامها من الـ providers ──
 
