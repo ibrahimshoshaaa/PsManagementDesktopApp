@@ -19,11 +19,6 @@ Future<void> openDeviceSession(BuildContext context, DeviceRow device, {bool buf
           : _StartDialog(device: device),
     );
 
-final _customers = StreamProvider.autoDispose<List<LocalCustomer>>((ref) {
-  final db = ref.watch(databaseProvider);
-  return db.select(db.localCustomers).watch();
-});
-
 String _money(num value) => '${value.toStringAsFixed(2)} ج';
 
 class _StartDialog extends ConsumerStatefulWidget {
@@ -83,7 +78,7 @@ class _StartDialogState extends ConsumerState<_StartDialog> {
   Widget build(BuildContext context) {
     final prices = {for (final row in ref.watch(pricesStreamProvider).valueOrNull ?? <PriceRow>[]) row.priceKey: row.amount};
     final matchEnabled = ref.watch(appConfigProvider).valueOrNull?.matchEnabled ?? false;
-    final customers = ref.watch(_customers).valueOrNull ?? <LocalCustomer>[];
+    final customers = ref.watch(localCustomersStreamProvider).valueOrNull ?? <LocalCustomer>[];
     final type = widget.device.deviceType;
     int price(String mode) => _match
         ? widget.device.copyWith(mode: mode).matchPrice(prices)
@@ -297,7 +292,7 @@ class _SessionDialogState extends ConsumerState<_SessionDialog> {
     }
     final controller = ref.read(devicesControllerProvider);
     final session = ref.watch(sessionProvider);
-    final customer = ref.watch(_customers).valueOrNull
+    final customer = ref.watch(localCustomersStreamProvider).valueOrNull
         ?.where((row) => row.id == device.localCustomerId).firstOrNull;
     final prices = {for (final row in ref.watch(pricesStreamProvider).valueOrNull ?? <PriceRow>[]) row.priceKey: row.amount};
     final menu = {for (final row in ref.watch(menuItemsStreamProvider).valueOrNull ?? <MenuItemRow>[]) row.itemName: row.price};
@@ -404,7 +399,6 @@ class _SessionDialogState extends ConsumerState<_SessionDialog> {
     final changes = await showBuffetPicker(
       context,
       target: device.displayName,
-      existing: Map<String, int>.from(jsonDecode(device.ordersJson) as Map),
     );
     if (!mounted || changes == null) return;
     await _run(() => ref.read(devicesControllerProvider).addOrders(

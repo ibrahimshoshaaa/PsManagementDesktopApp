@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/device_logic.dart';
+import '../../domain/table_logic.dart';
 import '../../providers/core_providers.dart';
 
 class SessionAlerts extends ConsumerStatefulWidget {
@@ -38,6 +39,13 @@ class _SessionAlertsState extends ConsumerState<SessionAlerts> {
           current.add(id);
           if (_announced.add(id)) notices.add('انتهى الوقت المحدد لـ ${device.displayName}');
         }
+      }
+      final tables = ref.read(gameTablesStreamProvider).valueOrNull ?? [];
+      for (final table in tables) {
+        if (!table.countdownFinished) continue;
+        final id = 'table:${table.tableId}:${table.startTime}:${table.countdownTotalSeconds}';
+        current.add(id);
+        if (_announced.add(id)) notices.add('انتهى الوقت المحدد لـ ${table.name}');
       }
       _announced.retainAll(current);
       if (notices.isNotEmpty) {

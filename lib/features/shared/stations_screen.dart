@@ -10,6 +10,7 @@ import '../../providers/core_providers.dart';
 import '../drink_tables/drink_tables_controller.dart';
 import '../tables/tables_controller.dart';
 import 'buffet_picker.dart';
+import 'operation_dialog.dart';
 
 String _money(num value) => '${value.toStringAsFixed(2)} ج';
 Map<String, int> _orders(String raw) => Map<String, int>.from(jsonDecode(raw) as Map);
@@ -87,7 +88,7 @@ class _StationCard extends ConsumerWidget {
               Icon(drinks ? Icons.local_cafe_outlined : Icons.table_bar, color: color),
               const SizedBox(width: 10),
               Expanded(child: Text(row.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-              Text(active ? (row.game?.isPaused == true ? 'متوقفة' : 'مشغولة') : 'متاحة', style: TextStyle(color: active ? color : Colors.white70)),
+              Text(active ? (row.game?.countdownFinished == true ? 'انتهى الوقت' : row.game?.isPaused == true ? 'متوقفة' : 'مشغولة') : 'متاحة', style: TextStyle(color: active ? color : Colors.white70)),
             ]),
             const Spacer(),
             Text(row.game?.isActive == true ? row.game!.timerText() : active ? _money(row.buffet) : 'جاهزة',
@@ -156,6 +157,8 @@ class _StationDialogState extends ConsumerState<_StationDialog> {
     final admin = ref.watch(sessionProvider).role == UserRole.admin;
     final gameController = ref.read(tablesControllerProvider);
     if (playing) ref.watch(tickerProvider);
+    final customers = ref.watch(localCustomersStreamProvider).valueOrNull ?? <LocalCustomer>[];
+    final customer = customers.where((row) => row.id == game?.localCustomerId).firstOrNull;
 
     return AlertDialog(
       title: Text(row.name),
@@ -169,6 +172,9 @@ class _StationDialogState extends ConsumerState<_StationDialog> {
               Text(playing ? game!.timerText() : widget.drinks ? _money(row.buffet) : 'التربيزة متاحة',
                 style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.accent)),
               if (game != null) Text('${_money(game.rate)} / ساعة${game.gamePrice > 0 ? '  •  ${_money(game.gamePrice)} / لعبة' : ''}'),
+              if (playing && game?.countdownTotalSeconds != null)
+                Text(game!.countdownFinished ? 'انتهى الوقت المحدد' : 'الوقت المتبقي'),
+              if (customer != null) Text('العميل: ${customer.name}'),
               if (playing) Text('لعب ${_money(game!.hourlyTimeCost)}  •  بوفيه ${_money(row.buffet)}'),
             ]),
           )),
@@ -179,6 +185,10 @@ class _StationDialogState extends ConsumerState<_StationDialog> {
                 onPressed: _busy ? null : () => _run(() => game!.isPaused ? gameController.resume(widget.id) : gameController.pause(widget.id)),
                 icon: Icon(game!.isPaused ? Icons.play_arrow : Icons.pause),
                 label: Text(game!.isPaused ? 'استكمال' : 'إيقاف مؤقت'),
+              ),
+              if (playing) OutlinedButton.icon(
+                onPressed: _busy ? null : _adjust,
+                icon: const Icon(Icons.more_time), label: const Text('تعديل الوقت'),
               ),
               OutlinedButton.icon(onPressed: _busy ? null : () => _transfer(row),
                 icon: const Icon(Icons.swap_horiz), label: const Text('نقل للتربيزة')),
@@ -208,18 +218,11 @@ class _StationDialogState extends ConsumerState<_StationDialog> {
         ),
         if (game != null && !playing) ...[
           if (game.gamePrice > 0) OutlinedButton(
-            onPressed: _busy ? null : () => _run(() async {
-              final recorded = await gameController.recordGame(widget.id);
-              if (!recorded) throw StateError('التربيزة غير متاحة.');
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسجيل اللعبة في السجل')));
-                Navigator.pop(context);
-              }
-            }),
+            onPressed: _busy ? null : () => _start(game, customers, fixedPrice: true),
             child: const Text('تسجيل لعبة'),
           ),
-          FilledButton.icon(onPressed: _busy ? null : () => _run(() => gameController.start(widget.id)),
-            icon: const Icon(Icons.play_arrow), label: const Text('بدء جلسة بالساعة')),
+          FilledButton.icon(onPressed: _busy ? null : () => _start(game, customers),
+            icon: const Icon(Icons.play_arrow), label: const Text('بدء جلسة')),
         ] else FilledButton.icon(
           onPressed: _busy || (!playing && row.orders.isEmpty) ? null : () => _checkout(row),
           icon: const Icon(Icons.receipt_long), label: const Text('حساب التربيزة'),
@@ -228,8 +231,74 @@ class _StationDialogState extends ConsumerState<_StationDialog> {
     );
   }
 
+  Future<void> _start(GameTableRow game, List<LocalCustomer> customers, {bool fixedPrice = false}) {
+    var mode = 'open';
+    var custom = '';
+    int? customerId;
+    return showOperationDialog(
+      context, title: fixedPrice ? 'تسجيل لعبة • ${game.name}' : 'بدء جلسة • ${game.name}',
+      action: fixedPrice ? 'تسجيل اللعبة' : 'بدء اللعب',
+      fields: [
+        Text(fixedPrice ? 'سعر اللعبة: ${_money(game.gamePrice)}' : 'سعر الساعة: ${_money(game.rate)}'),
+        if (!fixedPrice) ...[
+          DropdownButtonFormField<String>(
+            value: mode, isExpanded: true,
+            decoration: const InputDecoration(labelText: 'مدة الجلسة'),
+            items: const [
+              DropdownMenuItem(value: 'open', child: Text('وقت مفتوح')),
+              DropdownMenuItem(value: '30', child: Text('٣٠ دقيقة')),
+              DropdownMenuItem(value: '60', child: Text('ساعة')),
+              DropdownMenuItem(value: '90', child: Text('ساعة ونص')),
+              DropdownMenuItem(value: 'custom', child: Text('مدة أخرى')),
+            ],
+            onChanged: (value) { if (value != null) mode = value; },
+          ),
+          TextFormField(
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'عدد الدقائق عند اختيار «مدة أخرى»'),
+            onChanged: (value) => custom = value.trim(),
+            validator: (_) {
+              if (mode != 'custom') return null;
+              final value = int.tryParse(custom);
+              return value == null || value < 1 || value > 1440 ? 'اكتب مدة من دقيقة إلى ١٤٤٠ دقيقة' : null;
+            },
+          ),
+        ],
+        if (customers.isNotEmpty) DropdownButtonFormField<int>(
+          value: -1, isExpanded: true, decoration: const InputDecoration(labelText: 'العميل (اختياري)'),
+          items: [
+            const DropdownMenuItem(value: -1, child: Text('بدون عميل')),
+            for (final customer in customers) DropdownMenuItem(value: customer.id, child: Text(customer.name)),
+          ],
+          onChanged: (value) => customerId = value == -1 ? null : value,
+        ),
+      ],
+      save: () async {
+        final controller = ref.read(tablesControllerProvider);
+        if (fixedPrice) {
+          final recorded = await controller.recordGame(game.tableId, customerId: customerId);
+          if (!recorded) throw StateError('التربيزة غير متاحة.');
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسجيل اللعبة في السجل')));
+        } else {
+          final minutes = mode == 'open' ? null : int.parse(mode == 'custom' ? custom : mode);
+          await controller.start(game.tableId, minutes: minutes, customerId: customerId);
+        }
+      },
+    );
+  }
+
+  Future<void> _adjust() {
+    var minutes = 0;
+    return showOperationDialog(context, title: 'إضافة أو خصم وقت', action: 'حفظ التعديل', fields: [
+      TextFormField(autofocus: true, keyboardType: const TextInputType.numberWithOptions(signed: true),
+        decoration: const InputDecoration(labelText: 'الدقائق (مثلاً 15 أو -15)'),
+        onChanged: (value) => minutes = int.tryParse(value.trim()) ?? 0,
+        validator: (_) => minutes == 0 || minutes.abs() > 1440 ? 'اكتب عدد دقائق صالح' : null),
+    ], save: () => ref.read(tablesControllerProvider).adjustMinutes(widget.id, minutes));
+  }
+
   Future<void> _pick(_Station row) async {
-    final selected = await showBuffetPicker(context, target: row.name, existing: row.orders);
+    final selected = await showBuffetPicker(context, target: row.name);
     if (!mounted || selected == null) return;
     await _run(() => _add(selected));
   }

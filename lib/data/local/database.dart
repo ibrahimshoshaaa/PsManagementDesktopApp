@@ -69,6 +69,9 @@ class GameTables extends Table {
   TextColumn get ordersJson => text().withDefault(const Constant('{}'))();
   TextColumn get sessionLogJson => text().withDefault(const Constant('[]'))();
 
+  IntColumn get countdownTotalSeconds => integer().nullable()();
+  IntColumn get localCustomerId => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {tableId};
 }
@@ -394,7 +397,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -415,8 +418,23 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(devices, devices.localCustomerId);
             await m.addColumn(historyRecords, historyRecords.localCustomerId);
           }
+          if (from < 6) {
+            await m.addColumn(gameTables, gameTables.countdownTotalSeconds);
+            await m.addColumn(gameTables, gameTables.localCustomerId);
+          }
         },
       );
+
+  Future<void> recordCustomerVisit(int? id, double total, String date) async {
+    if (id == null) return;
+    final customer = await (select(localCustomers)..where((row) => row.id.equals(id))).getSingleOrNull();
+    if (customer == null) return;
+    await (update(localCustomers)..where((row) => row.id.equals(id))).write(
+      LocalCustomersCompanion(
+        visits: Value(customer.visits + 1), totalSpent: Value(customer.totalSpent + total), lastVisit: Value(date),
+      ),
+    );
+  }
 
   /// The caller saves the resulting quantities in the same transaction.
   Future<Map<String, int>> changeBuffetOrders(String ordersJson, Map<String, int> changes) async {

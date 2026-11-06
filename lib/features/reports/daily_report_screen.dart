@@ -15,13 +15,14 @@ class DailyReportScreen extends ConsumerStatefulWidget {
 
 class _DailyReportScreenState extends ConsumerState<DailyReportScreen> {
   int _tab = 0;
+  DateTime? _selectedDate;
 
   @override
   Widget build(BuildContext context) {
     final local = ref.watch(historyStreamProvider).valueOrNull ?? [];
     final menu = ref.watch(menuItemsStreamProvider).valueOrNull ?? [];
     final expenses = ref.watch(expensesStreamProvider).valueOrNull ?? [];
-    final today = DateTime.now();
+    final today = _selectedDate ?? DateTime.now();
     final todayExpenses = expenses.where(
       (row) => row.date == '${today.day}/${today.month}/${today.year}',
     ).fold<double>(0, (sum, row) => sum + row.amount);
@@ -71,7 +72,19 @@ class _DailyReportScreenState extends ConsumerState<DailyReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('${today.day}/${today.month}/${today.year}  •  سجل الكمبيوتر'),
+          Row(children: [
+            Expanded(child: Text('المبيعات • ${today.day}/${today.month}/${today.year}',
+              style: Theme.of(context).textTheme.titleLarge)),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final date = await showDatePicker(context: context, initialDate: today,
+                  firstDate: DateTime(2000), lastDate: DateTime.now());
+                if (date != null && mounted) setState(() => _selectedDate = date);
+              },
+              icon: const Icon(Icons.calendar_today_outlined), label: const Text('اختيار يوم'),
+            ),
+            if (_selectedDate != null) TextButton(onPressed: () => setState(() => _selectedDate = null), child: const Text('اليوم')),
+          ]),
           const SizedBox(height: 16),
           Wrap(
             spacing: 8,
@@ -99,7 +112,7 @@ class _DailyReportScreenState extends ConsumerState<DailyReportScreen> {
                     ],
                   )
                 : ranked.isEmpty
-                    ? const Center(child: Text('مفيش فواتير في القسم ده النهارده'))
+                    ? const Center(child: Text('مفيش فواتير في القسم ده في التاريخ المختار'))
                     : ListView.builder(
                         itemCount: ranked.length,
                         itemBuilder: (context, index) {

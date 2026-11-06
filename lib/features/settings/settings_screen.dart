@@ -12,50 +12,62 @@ import '../shared/operation_dialog.dart';
 import '../../data/local/database.dart';
 import '../cashier/cashiers_screen.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 6,
-      child: Column(
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  int _selected = 0;
+  static const _items = [
+    ('عام ونسخ احتياطي', Icons.settings_outlined, _GeneralTab()),
+    ('الأجهزة والتربيزات', Icons.sports_esports_outlined, _DevicesTablesTab()),
+    ('الأسعار', Icons.payments_outlined, _PricesTab()),
+    ('حسابات الكاشير', Icons.manage_accounts_outlined, CashiersScreen()),
+    ('المنيو والأقسام', Icons.restaurant_menu, _MenuTab()),
+    ('المخزون', Icons.inventory_2_outlined, _InventoryTab()),
+  ];
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, limits) {
+    final item = _items[_selected];
+    final content = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(padding: const EdgeInsets.fromLTRB(24, 18, 24, 8),
+        child: Text(item.$1, style: Theme.of(context).textTheme.titleLarge)),
+      Expanded(child: KeyedSubtree(key: ValueKey(_selected), child: item.$3)),
+    ]);
+    if (limits.maxWidth < 760) {
+      return Column(children: [
+        Padding(
+          padding: const EdgeInsets.all(14),
+          child: DropdownButtonFormField<int>(value: _selected, isExpanded: true,
+            decoration: const InputDecoration(labelText: 'قسم الإعدادات'),
+            items: [for (var i = 0; i < _items.length; i++) DropdownMenuItem(value: i, child: Text(_items[i].$1))],
+            onChanged: (value) { if (value != null) setState(() => _selected = value); }),
+        ),
+        Expanded(child: content),
+      ]);
+    }
+    return Row(children: [
+      SizedBox(width: 220, child: ListView(
+        padding: const EdgeInsets.all(12),
         children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Text('الإعدادات', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-            ),
-          ),
-          const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [
-              Tab(text: 'عام'),
-              Tab(text: 'الأجهزة والتربيزات'),
-              Tab(text: 'الأسعار'),
-              Tab(text: 'الكاشيرز'),
-              Tab(text: 'المنيو'),
-              Tab(text: 'المخزون'),
-            ],
-          ),
-          const Expanded(
-            child: TabBarView(
-              children: [
-                _GeneralTab(),
-                _DevicesTablesTab(),
-                _PricesTab(),
-                CashiersScreen(),
-                _MenuTab(),
-                _InventoryTab(),
-              ],
-            ),
+          for (var i = 0; i < _items.length; i++) ListTile(
+            selected: _selected == i,
+            selectedTileColor: AppColors.card2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            leading: Icon(_items[i].$2, size: 20),
+            title: Text(_items[i].$1),
+            onTap: () => setState(() => _selected = i),
           ),
         ],
-      ),
-    );
-  }
+      )),
+      const VerticalDivider(width: 1),
+      Expanded(child: content),
+    ]);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════ عام ═════

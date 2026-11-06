@@ -74,7 +74,7 @@ class DevicesController {
       deviceName: device.displayName,
       deviceType: device.deviceType,
     );
-    await _recordVisit(customerId, price, date);
+    await _db.recordCustomerVisit(customerId, price, date);
     return true;
   });
 
@@ -236,19 +236,6 @@ class DevicesController {
     return jsonEncode(history);
   }
 
-  Future<void> _recordVisit(int? id, double total, String date) async {
-    if (id == null) return;
-    final query = _db.select(_db.localCustomers)..where((row) => row.id.equals(id));
-    final customer = await query.getSingleOrNull();
-    if (customer == null) return;
-    await (_db.update(_db.localCustomers)..where((row) => row.id.equals(id)))
-        .write(LocalCustomersCompanion(
-      visits: Value(customer.visits + 1),
-      totalSpent: Value(customer.totalSpent + total),
-      lastVisit: Value(date),
-    ));
-  }
-
   static const _available = DevicesCompanion(
     status: Value('متاح'),
     mode: Value('normal'),
@@ -299,7 +286,7 @@ class DevicesController {
 
     await _db.deductSoldItems(orders);
 
-    await _recordVisit(device.localCustomerId, total, DateTime.now().toIso8601String());
+    await _db.recordCustomerVisit(device.localCustomerId, total, DateTime.now().toIso8601String());
     await _write(deviceId, _available);
 
     AuditLogService.logDevice(

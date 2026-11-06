@@ -16,13 +16,16 @@ class TablesController {
   AppDatabase get _db => ref.read(databaseProvider);
 
 
-  Future<void> start(int tableId) async {
+  Future<void> start(int tableId, {int? minutes, int? customerId}) async {
+    if (minutes != null && (minutes < 1 || minutes > 1440)) throw StateError('راجع مدة الجلسة.');
     final table = await (_db.select(_db.gameTables)..where((t) => t.tableId.equals(tableId))).getSingleOrNull();
     await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId) & t.startTime.isNull())).write(
       GameTablesCompanion(
         startTime: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
         isPaused: const Value(false),
         pauseStartTime: const Value(null),
+        countdownTotalSeconds: Value(minutes == null ? null : minutes * 60),
+        localCustomerId: Value(customerId),
       ),
     );
     if (table != null) AuditLogService.logTable(action: AuditAction.tableStart, tableName: table.name);
@@ -71,21 +74,23 @@ class TablesController {
       startTime: Value(source.startTime), pauseStartTime: Value(source.pauseStartTime),
       addedSeconds: Value(source.addedSeconds), isPaused: Value(source.isPaused),
       ordersJson: Value(source.ordersJson), sessionLogJson: Value(source.sessionLogJson),
+      countdownTotalSeconds: Value(source.countdownTotalSeconds), localCustomerId: Value(source.localCustomerId),
     ));
     await (_db.update(_db.gameTables)..where((row) => row.tableId.equals(sourceId))).write(_empty);
     return true;
   });
 
-  Future<bool> recordGame(int tableId) => _db.transaction(() async {
+  Future<bool> recordGame(int tableId, {int? customerId}) => _db.transaction(() async {
     final row = await (_db.select(_db.gameTables)..where((row) => row.tableId.equals(tableId))).getSingleOrNull();
     if (row == null || row.startTime != null || row.gamePrice <= 0) return false;
     final now = DateTime.now().toIso8601String();
     final price = row.gamePrice.toDouble();
     await _db.into(_db.historyRecords).insert(HistoryRecordsCompanion.insert(
       name: row.name, deviceType: const Value('table'), isGame: const Value(true),
-      total: price, timeCost: Value(price), date: now, createdAt: now,
+      total: price, timeCost: Value(price), date: now, createdAt: now, localCustomerId: Value(customerId),
       cashier: Value(ref.read(sessionProvider).cashierName ?? 'أدمن'),
     ));
+    await _db.recordCustomerVisit(customerId, price, now);
     AuditLogService.logTable(action: AuditAction.tableGameRecord, tableName: row.name);
     return true;
   });
@@ -93,7 +98,21 @@ class TablesController {
   static const _empty = GameTablesCompanion(
     startTime: Value(null), pauseStartTime: Value(null), addedSeconds: Value(0),
     isPaused: Value(false), ordersJson: Value('{}'), sessionLogJson: Value('[]'),
+    countdownTotalSeconds: Value(null), localCustomerId: Value(null),
   );
+
+  Future<void> adjustMinutes(int id, int minutes) => _db.transaction(() async {
+    final row = await (_db.select(_db.gameTables)..where((table) => table.tableId.equals(id))).getSingleOrNull();
+    if (row == null || !row.isActive) return;
+    final fixed = row.countdownTotalSeconds;
+    final elapsed = row.elapsedSeconds;
+    final difference = (elapsed + minutes * 60).clamp(0, 1 << 32).toInt() - elapsed;
+    await (_db.update(_db.gameTables)..where((table) => table.tableId.equals(id))).write(
+      fixed == null
+          ? GameTablesCompanion(addedSeconds: Value(row.addedSeconds + difference))
+          : GameTablesCompanion(countdownTotalSeconds: Value((fixed + minutes * 60).clamp(0, 1 << 32).toInt())),
+    );
+  });
 
   Future<void> addOrder(int tableId, String itemName, int deltaQty) =>
       addOrders(tableId, {itemName: deltaQty});
@@ -129,6 +148,7 @@ class TablesController {
             timeCost: Value(timeCost),
             buffetCost: Value(buffetCost),
             elapsedSeconds: Value(elapsed),
+            localCustomerId: Value(table.localCustomerId),
             ordersJson: Value(jsonEncode(orders)),
             cashier: Value(ref.read(sessionProvider).cashierName ?? 'أدمن'),
             date: DateTime.now().toString(),
@@ -137,6 +157,7 @@ class TablesController {
         );
 
     await _db.deductSoldItems(orders);
+    await _db.recordCustomerVisit(table.localCustomerId, total, DateTime.now().toIso8601String());
 
     await (_db.update(_db.gameTables)..where((row) => row.tableId.equals(tableId))).write(_empty);
 

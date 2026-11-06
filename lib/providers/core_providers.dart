@@ -76,6 +76,11 @@ final cashiersStreamProvider = StreamProvider<List<CashierRow>>((ref) {
   return ref.watch(databaseProvider).watchCashiers();
 });
 
+final localCustomersStreamProvider = StreamProvider.autoDispose<List<LocalCustomer>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.select(db.localCustomers).watch();
+});
+
 final menuItemsStreamProvider = StreamProvider<List<MenuItemRow>>((ref) {
   return ref.watch(databaseProvider).watchMenuItems();
 });

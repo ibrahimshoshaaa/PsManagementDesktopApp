@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,18 +7,17 @@ import '../../data/local/database.dart';
 import '../../providers/core_providers.dart';
 
 Future<Map<String, int>?> showBuffetPicker(
-  BuildContext context, {required String target, Map<String, int> existing = const {}}
+  BuildContext context, {required String target}
 ) => showDialog<Map<String, int>>(
   context: context,
-  builder: (_) => _BuffetPicker(target: target, existing: existing),
+  builder: (_) => _BuffetPicker(target: target),
 );
 
 String _money(num value) => '${value.toStringAsFixed(2)} ج';
 
 class _BuffetPicker extends ConsumerStatefulWidget {
-  const _BuffetPicker({required this.target, required this.existing});
+  const _BuffetPicker({required this.target});
   final String target;
-  final Map<String, int> existing;
 
   @override
   ConsumerState<_BuffetPicker> createState() => _BuffetPickerState();
@@ -32,7 +33,18 @@ class _BuffetPickerState extends ConsumerState<_BuffetPicker> {
     final menu = ref.watch(menuItemsStreamProvider).valueOrNull ?? <MenuItemRow>[];
     final categories = ref.watch(buffetCategoriesStreamProvider).valueOrNull ?? <BuffetCategoryRow>[];
     final stock = {for (final row in ref.watch(inventoryStreamProvider).valueOrNull ?? <InventoryItemRow>[]) row.itemName: row.quantity};
-    final existing = widget.existing;
+    final reserved = <String, int>{};
+    final accounts = [
+      for (final row in ref.watch(devicesStreamProvider).valueOrNull ?? <DeviceRow>[]) row.ordersJson,
+      for (final row in ref.watch(gameTablesStreamProvider).valueOrNull ?? <GameTableRow>[]) row.ordersJson,
+      for (final row in ref.watch(drinkTablesStreamProvider).valueOrNull ?? <DrinkTableRow>[]) row.ordersJson,
+    ];
+    for (final raw in accounts) {
+      final orders = Map<String, int>.from(jsonDecode(raw) as Map);
+      for (final item in orders.entries) {
+        reserved.update(item.key, (value) => value + item.value, ifAbsent: () => item.value);
+      }
+    }
     final filtered = menu.where((row) => (_category == null || row.categoryId == _category) &&
         row.itemName.toLowerCase().contains(_query)).toList();
     final count = _selected.values.fold<int>(0, (sum, value) => sum + value);
@@ -66,7 +78,7 @@ class _BuffetPickerState extends ConsumerState<_BuffetPicker> {
                 final row = filtered[index];
                 final qty = _selected[row.itemName] ?? 0;
                 final inStock = stock[row.itemName];
-                final already = existing[row.itemName] ?? 0;
+                final already = reserved[row.itemName] ?? 0;
                 return Card(
                   child: ListTile(
                     title: Text(row.itemName),
