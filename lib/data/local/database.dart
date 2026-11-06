@@ -343,6 +343,15 @@ class LocalAuditEvents extends Table {
   TextColumn get entryJson => text()();
 }
 
+class DesktopLicenses extends Table {
+  IntColumn get id => integer()();
+  TextColumn get token => text()();
+  IntColumn get lastSeenUtcMs => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DriftDatabase(tables: [
   Devices,
   GameTables,
@@ -369,6 +378,7 @@ class LocalAuditEvents extends Table {
   SubscriptionCache,
   LocalCustomers,
   LocalAuditEvents,
+  DesktopLicenses,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(openConnection());
@@ -377,7 +387,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -391,6 +401,7 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(localCustomers);
             await m.createTable(localAuditEvents);
           }
+          if (from < 4) await m.createTable(desktopLicenses);
         },
       );
 

@@ -33,7 +33,9 @@ class _NavItem {
 }
 
 class AppShell extends ConsumerStatefulWidget {
-  const AppShell({super.key});
+  const AppShell({super.key, this.onManageLicense});
+
+  final VoidCallback? onManageLicense;
   @override
   ConsumerState<AppShell> createState() => _AppShellState();
 }
@@ -110,6 +112,12 @@ class _AppShellState extends ConsumerState<AppShell> {
                       ),
                       const SizedBox(width: 12),
                       Text(isAdmin ? 'مدير المحل' : session.cashierName ?? 'الكاشير'),
+                      if (isAdmin && widget.onManageLicense != null)
+                        IconButton(
+                          tooltip: 'الترخيص والتجديد',
+                          onPressed: widget.onManageLicense,
+                          icon: const Icon(Icons.vpn_key_outlined),
+                        ),
                     ],
                   ),
                 ),

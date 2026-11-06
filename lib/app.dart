@@ -7,6 +7,7 @@ import 'providers/core_providers.dart';
 import 'features/auth/local_setup_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/shell/app_shell.dart';
+import 'features/license/license_gate.dart';
 
 class PSApp extends StatelessWidget {
   const PSApp({super.key});
@@ -26,13 +27,15 @@ class PSApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       builder: (context, child) => Directionality(textDirection: TextDirection.rtl, child: child!),
-      home: const _BootGate(),
+      home: LicenseGate(builder: (manageLicense) => _BootGate(manageLicense: manageLicense)),
     );
   }
 }
 
 class _BootGate extends ConsumerWidget {
-  const _BootGate();
+  const _BootGate({required this.manageLicense});
+
+  final VoidCallback manageLicense;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -46,7 +49,7 @@ class _BootGate extends ConsumerWidget {
       data: (settings) {
         if (settings.adminPasswordHash.isEmpty) return const LocalSetupScreen();
         if (session.role == UserRole.none) return LoginScreen(onLoggedIn: () {});
-        return const AppShell();
+        return AppShell(onManageLicense: manageLicense);
       },
     );
   }
