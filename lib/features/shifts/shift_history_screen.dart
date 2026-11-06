@@ -15,13 +15,19 @@ final _closedShifts = StreamProvider.autoDispose<List<ShiftHistoryRow>>((ref) {
 });
 
 class ShiftHistoryScreen extends ConsumerWidget {
-  const ShiftHistoryScreen({super.key});
+  const ShiftHistoryScreen({super.key, this.cashierName});
+  final String? cashierName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => ref.watch(_closedShifts).when(
     loading: () => const Center(child: CircularProgressIndicator()),
     error: (_, __) => const Center(child: Text('تعذر تحميل الشيفتات')),
-    data: (rows) => rows.isEmpty
+    data: (all) {
+      final session = ref.watch(sessionProvider);
+      final filter = session.role == UserRole.admin ? cashierName : session.cashierName;
+      final rows = session.role == UserRole.none || (session.role == UserRole.cashier && filter == null)
+          ? <ShiftHistoryRow>[] : all.where((row) => filter == null || row.cashierName == filter).toList();
+      return rows.isEmpty
         ? const Center(child: Text('مفيش شيفتات مقفولة لسه'))
         : ListView.builder(padding: const EdgeInsets.all(24), itemCount: rows.length, itemBuilder: (context, index) {
             final row = rows[index];
@@ -61,6 +67,7 @@ class ShiftHistoryScreen extends ConsumerWidget {
                 ),
               ],
             ));
-          }),
+          });
+    },
   );
 }

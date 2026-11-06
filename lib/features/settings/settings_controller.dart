@@ -237,6 +237,19 @@ class SettingsController {
     AuditLogService.log(action: AuditAction.passwordChanged, actionDetails: 'غيّر كلمة سر الأدمن');
   }
 
+  Future<void> setTablesEnabled({required bool drinks, required bool enabled}) => _db.transaction(() async {
+    if (!enabled) {
+      final blocked = drinks
+          ? (await _db.select(_db.drinkTables).get()).any((row) => row.ordersJson != '{}')
+          : (await _db.select(_db.gameTables).get()).any((row) => row.startTime != null || row.ordersJson != '{}');
+      if (blocked) throw StateError('اقفل الحسابات المفتوحة في القسم قبل إخفائه.');
+    }
+    await (_db.update(_db.appConfig)..where((row) => row.id.equals(0))).write(
+      drinks ? AppConfigCompanion(drinkTablesEnabled: Value(enabled))
+          : AppConfigCompanion(gameTablesEnabled: Value(enabled)),
+    );
+  });
+
   Future<void> setMatchEnabled(bool value) async {
     await (_db.update(_db.appConfig)..where((t) => t.id.equals(0))).write(AppConfigCompanion(matchEnabled: Value(value)));
     AuditLogService.log(action: AuditAction.matchToggled, actionDetails: value ? 'فعّل نظام الماتش' : 'عطّل نظام الماتش');

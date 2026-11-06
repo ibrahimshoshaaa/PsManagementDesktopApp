@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_colors.dart';
-import '../../data/local/database.dart';
+import 'archive_day.dart';
 import '../../providers/core_providers.dart';
 
 class ArchiveScreen extends ConsumerWidget {
@@ -42,10 +42,8 @@ class ArchiveScreen extends ConsumerWidget {
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (context, i) {
                           final a = archives[i];
-                          int recordCount = 0;
-                          try {
-                            recordCount = (jsonDecode(a.recordsJson) as List).length;
-                          } catch (_) {}
+                          final records = (jsonDecode(a.recordsJson) as List).whereType<Map>().toList();
+                          final recordCount = records.length;
 
                           return ExpansionTile(
                             leading: const Icon(Icons.calendar_month, color: AppColors.accent),
@@ -65,7 +63,12 @@ class ArchiveScreen extends ConsumerWidget {
                                   ],
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              for (final record in records) ListTile(
+                                dense: true,
+                                title: Text(record['name']?.toString() ?? ''),
+                                subtitle: Text(record['cashier']?.toString() ?? ''),
+                                trailing: Text('${record['total'] ?? 0} ج'),
+                              ),
                             ],
                           );
                         },
@@ -87,46 +90,7 @@ class ArchiveScreen extends ConsumerWidget {
       lastDate: today,
     );
     if (!context.mounted || date == null) return;
-    final db = ref.read(databaseProvider);
-    final label = date.toIso8601String().split('T').first;
-    try {
-      final saved = await db.transaction(() async {
-        final history = await db.select(db.historyRecords).get();
-        final records = history.where((row) =>
-            DateUtils.isSameDay(DateTime.tryParse(row.createdAt)?.toLocal(), date)).toList();
-        if (records.isEmpty) return false;
-        final summary = DailyArchivesCompanion.insert(
-          date: label,
-          totalTime: records.fold<double>(0, (sum, row) => sum + row.timeCost),
-          totalBuffet: records.fold<double>(0, (sum, row) => sum + row.buffetCost),
-          totalOverall: records.fold<double>(0, (sum, row) => sum + row.total),
-          recordsJson: jsonEncode(records.map((row) => {
-            'name': row.name,
-            'total': row.total,
-            'cashier': row.cashier,
-            'date': row.date,
-            'orders': row.ordersJson,
-          }).toList()),
-        );
-        final existing = await (db.select(db.dailyArchives)..where((row) => row.date.equals(label))).get();
-        if (existing.isEmpty) {
-          await db.into(db.dailyArchives).insert(summary);
-        } else {
-          await (db.update(db.dailyArchives)..where((row) => row.rowId.equals(existing.first.rowId)))
-              .write(summary);
-        }
-        return true;
-      });
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
-          saved ? 'اتحفظ ملخص $label. الفواتير الأصلية موجودة في السجل.' : 'مفيش فواتير في اليوم ده.',
-        )));
-      }
-    } catch (_) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر حفظ الأرشيف')));
-      }
-    }
+    await confirmArchiveDay(context, ref.read(databaseProvider), date);
   }
 }
 

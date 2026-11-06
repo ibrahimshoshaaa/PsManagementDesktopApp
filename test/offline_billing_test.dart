@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:psapp_flutter/data/local/database.dart';
 import 'package:psapp_flutter/features/devices/devices_controller.dart';
+import 'package:psapp_flutter/features/archive/archive_day.dart';
+import 'package:psapp_flutter/features/settings/settings_controller.dart';
 import 'package:psapp_flutter/features/debts/debts_controller.dart';
 import 'package:psapp_flutter/features/tournaments/tournaments_controller.dart';
 import 'package:psapp_flutter/features/drink_tables/drink_tables_controller.dart';
@@ -168,6 +170,36 @@ void main() {
     await controller.setMatchScore(id, 0, 3, 2, 1);
     row = await db.select(db.tournaments).getSingle();
     expect(row.currentRound, 1);
+  });
+
+  test('archiving the same day updates its snapshot without removing receipts', () async {
+    final today = DateTime.now();
+    expect(await archiveDay(db, today), isFalse);
+    final date = today.toIso8601String();
+    await db.into(db.historyRecords).insert(HistoryRecordsCompanion.insert(
+      name: 'Invoice', total: 40, date: date, createdAt: date,
+    ));
+    expect(await archiveDay(db, today), isTrue);
+    expect(await archiveDay(db, today), isTrue);
+    expect((await db.select(db.dailyArchives).getSingle()).totalOverall, 40);
+    expect((await db.select(db.historyRecords).get()).length, 1);
+  });
+
+  test('a table section can be hidden without losing the table after checkout', () async {
+    await db.into(db.gameTables).insert(GameTablesCompanion.insert(
+      tableId: const Value(0), name: 'Table', rate: const Value(60),
+    ));
+    final tables = container.read(tablesControllerProvider);
+    final settings = container.read(settingsControllerProvider);
+    await tables.start(0);
+    await expectLater(settings.setTablesEnabled(drinks: false, enabled: false), throwsStateError);
+    await tables.stop(0, byGame: false);
+    await settings.setTablesEnabled(drinks: false, enabled: false);
+    final config = await db.readConfigOnce();
+    expect(config.gameTablesEnabled, isFalse);
+    expect(config.drinkTablesEnabled, isTrue);
+    expect((await db.select(db.gameTables).get()).length, 1);
+    expect((await db.select(db.historyRecords).get()).length, 1);
   });
 
   test('shift totals include only receipts from that cashier', () async {

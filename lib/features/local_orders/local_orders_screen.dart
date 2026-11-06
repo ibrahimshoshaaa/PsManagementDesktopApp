@@ -38,13 +38,16 @@ class LocalOrdersScreen extends ConsumerWidget {
     final tables = ref.watch(gameTablesStreamProvider).valueOrNull ?? [];
     final drinks = ref.watch(drinkTablesStreamProvider).valueOrNull ?? [];
     final menu = ref.watch(menuItemsStreamProvider).valueOrNull ?? [];
+    final config = ref.watch(appConfigProvider).valueOrNull;
     final targets = <_Target>[
       for (final device in devices)
         if (device.startTime != null)
           (type: _TargetType.device, id: device.deviceId, name: device.displayName),
+      if (config?.gameTablesEnabled ?? true)
       for (final table in tables)
         if (table.startTime != null)
           (type: _TargetType.table, id: table.tableId, name: table.name),
+      if (config?.drinkTablesEnabled ?? true)
       for (final table in drinks)
         (type: _TargetType.drinks, id: table.tableId, name: table.name),
     ];

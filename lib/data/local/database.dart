@@ -103,6 +103,9 @@ class AppConfig extends Table {
   BoolColumn get matchEnabled => boolean().withDefault(const Constant(true))();
   IntColumn get numDevices => integer().withDefault(const Constant(0))();
 
+  BoolColumn get gameTablesEnabled => boolean().withDefault(const Constant(true))();
+  BoolColumn get drinkTablesEnabled => boolean().withDefault(const Constant(true))();
+
   BoolColumn get rechargeEnabled => boolean().withDefault(const Constant(false))();
   IntColumn get rechargeBalance => integer().withDefault(const Constant(0))();
 
@@ -397,7 +400,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -421,6 +424,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 6) {
             await m.addColumn(gameTables, gameTables.countdownTotalSeconds);
             await m.addColumn(gameTables, gameTables.localCustomerId);
+          }
+          if (from < 7) {
+            await m.addColumn(appConfig, appConfig.gameTablesEnabled);
+            await m.addColumn(appConfig, appConfig.drinkTablesEnabled);
           }
         },
       );

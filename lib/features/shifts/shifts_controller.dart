@@ -20,7 +20,7 @@ class ShiftsController {
 
   AppDatabase get _db => ref.read(databaseProvider);
 
-  Future<ShiftOpenResult> startShift(String cashierName) async {
+  Future<ShiftOpenResult> startShift(String cashierName) => _db.transaction(() async {
     final existing = await (_db.select(_db.openShifts)..where((t) => t.cashierName.equals(cashierName))).getSingleOrNull();
     if (existing != null) {
       // شيفت مفتوح محليًا بالفعل — كمّل عادي (استئناف بعد إعادة تشغيل التطبيق مثلًا)
@@ -36,7 +36,7 @@ class ShiftsController {
         );
     AuditLogService.log(action: AuditAction.shiftStarted, actionDetails: 'بدأ شيفت — $cashierName');
     return ShiftOpenResult(success: true);
-  }
+  });
 
   /// إنهاء الشيفت — بيحسب ملخص من سجلات التاريخ اللي حصلت في نفس الفترة،
   /// وينقله لـ shifts_history، ويشيله من open_shifts.

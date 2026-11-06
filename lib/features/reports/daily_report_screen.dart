@@ -5,6 +5,8 @@ import 'dart:convert';
 
 import '../../data/local/database.dart';
 import '../../providers/core_providers.dart';
+import '../../core/theme/app_colors.dart';
+import '../archive/archive_day.dart';
 
 class DailyReportScreen extends ConsumerStatefulWidget {
   const DailyReportScreen({super.key});
@@ -72,43 +74,80 @@ class _DailyReportScreenState extends ConsumerState<DailyReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(children: [
-            Expanded(child: Text('المبيعات • ${today.day}/${today.month}/${today.year}',
-              style: Theme.of(context).textTheme.titleLarge)),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final date = await showDatePicker(context: context, initialDate: today,
-                  firstDate: DateTime(2000), lastDate: DateTime.now());
-                if (date != null && mounted) setState(() => _selectedDate = date);
-              },
-              icon: const Icon(Icons.calendar_today_outlined), label: const Text('اختيار يوم'),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: const LinearGradient(colors: [Color(0xFF234447), Color(0xFF17253B)]),
             ),
-            if (_selectedDate != null) TextButton(onPressed: () => setState(() => _selectedDate = null), child: const Text('اليوم')),
-          ]),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (var index = 0; index < tabs.length; index++)
-                ChoiceChip(
-                  label: Text(tabs[index]),
-                  selected: _tab == index,
-                  onSelected: (_) => setState(() => _tab = index),
+            child: Wrap(
+              spacing: 16, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('تقرير المبيعات', style: Theme.of(context).textTheme.headlineSmall),
+                  Text('${today.day}/${today.month}/${today.year}  •  ${records.length} فاتورة'),
+                ]),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final date = await showDatePicker(context: context, initialDate: today,
+                      firstDate: DateTime(2000), lastDate: DateTime.now());
+                    if (date != null && mounted) setState(() => _selectedDate = date);
+                  },
+                  icon: const Icon(Icons.calendar_today_outlined), label: const Text('اختيار يوم'),
                 ),
-            ],
+                if (_selectedDate != null)
+                  TextButton(onPressed: () => setState(() => _selectedDate = null), child: const Text('الرجوع لليوم')),
+                FilledButton.icon(
+                  onPressed: records.isEmpty ? null : () => confirmArchiveDay(context, ref.read(databaseProvider), today),
+                  icon: const Icon(Icons.archive_outlined),
+                  label: Text(_selectedDate == null ? 'أرشفة اليوم' : 'أرشفة التاريخ المختار'),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
+          SingleChildScrollView(scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              for (var index = 0; index < tabs.length; index++)
+                Padding(padding: const EdgeInsetsDirectional.only(end: 8), child: ChoiceChip(
+                  label: Text(tabs[index]), selected: _tab == index,
+                  onSelected: (_) => setState(() => _tab = index),
+                )),
+            ]),
+          ),
+          const SizedBox(height: 12),
           Expanded(
             child: _tab == 0
                 ? ListView(
                     children: [
-                      _stat('إجمالي الفواتير', _money(total)),
-                      _stat('اللعب والماتشات', _money(play)),
-                      _stat('البوفيه', _money(buffet)),
-                      _stat('المصروفات', _money(todayExpenses)),
-                      _stat('الإيراد بعد المصروفات', _money(total - todayExpenses)),
-                      _stat('عدد الفواتير', records.length.toString()),
+                      LayoutBuilder(builder: (context, constraints) {
+                        final width = constraints.maxWidth;
+                        final count = width >= 850 ? 3 : width >= 480 ? 2 : 1;
+                        final cardWidth = (width - 12 * (count - 1)) / count;
+                        final summaries = [
+                          ('إجمالي الفواتير', _money(total), Icons.point_of_sale, AppColors.accent),
+                          ('الإيراد بعد المصروفات', _money(total - todayExpenses), Icons.account_balance_wallet_outlined, AppColors.green),
+                          ('المصروفات', _money(todayExpenses), Icons.payments_outlined, AppColors.orange),
+                          ('اللعب والماتشات', _money(play), Icons.sports_esports_outlined, AppColors.accent),
+                          ('البوفيه', _money(buffet), Icons.local_cafe_outlined, AppColors.amber),
+                          ('عدد الفواتير', records.length.toString(), Icons.receipt_long, Colors.white70),
+                        ];
+                        return Wrap(spacing: 12, runSpacing: 12, children: [
+                          for (final item in summaries)
+                            SizedBox(width: cardWidth, child: _stat(item.$1, item.$2, item.$3, item.$4)),
+                        ]);
+                      }),
+                      const SizedBox(height: 16),
+                      Card(child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          const Text('توزيع المبيعات', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 12),
+                          _bar('اللعب', play, play + buffet, AppColors.accent),
+                          const SizedBox(height: 12),
+                          _bar('البوفيه', buffet, play + buffet, AppColors.amber),
+                        ]),
+                      )),
                     ],
                   )
                 : ranked.isEmpty
@@ -134,9 +173,32 @@ class _DailyReportScreenState extends ConsumerState<DailyReportScreen> {
     );
   }
 
-  Widget _stat(String label, String value) => Card(
-        child: ListTile(title: Text(label), trailing: Text(value)),
-      );
+  Widget _stat(String label, String value, IconData icon, Color accent) => Card(
+    margin: EdgeInsets.zero,
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(children: [
+        Icon(icon, color: accent, size: 26),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(color: Colors.white70)),
+          Text(value, style: TextStyle(color: accent, fontSize: 22, fontWeight: FontWeight.w700)),
+        ])),
+      ]),
+    ),
+  );
+
+  Widget _bar(String label, double value, double total, Color color) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(children: [Expanded(child: Text(label)), Text(_money(value))]),
+      const SizedBox(height: 5),
+      LinearProgressIndicator(
+        value: total <= 0 ? 0 : (value / total).clamp(0.0, 1.0).toDouble(),
+        color: color, minHeight: 7, borderRadius: BorderRadius.circular(8),
+      ),
+    ],
+  );
 }
 
 double _amount(Map<String, dynamic> row, String key) =>

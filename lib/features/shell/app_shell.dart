@@ -55,8 +55,10 @@ class _AppShellState extends ConsumerState<AppShell> {
       if (!isAdmin)
         const _NavItem('مساحة الكاشير', Icons.point_of_sale, CashierWorkspace()),
       const _NavItem('الأجهزة', Icons.sports_esports, DevicesScreen()),
-      const _NavItem('التربيزات', Icons.table_bar, TablesScreen()),
-      const _NavItem('المشروبات', Icons.local_cafe, DrinkTablesScreen()),
+      if (config?.gameTablesEnabled ?? true)
+        const _NavItem('التربيزات', Icons.table_bar, TablesScreen()),
+      if (config?.drinkTablesEnabled ?? true)
+        const _NavItem('المشروبات', Icons.local_cafe, DrinkTablesScreen()),
       const _NavItem('الشيفت', Icons.badge, ShiftScreen()),
       const _NavItem('سجل الشيفتات', Icons.work_history_outlined, ShiftHistoryScreen(), adminOnly: true),
       const _NavItem('طلبات البوفيه', Icons.receipt_outlined, LocalOrdersScreen()),
