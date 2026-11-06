@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -210,10 +211,34 @@ class _LicenseFormState extends State<_LicenseForm> {
     super.dispose();
   }
 
-  Future<void> _save() async {
-    if (_saving || _code.text.trim().isEmpty) return;
+  Future<void> _openFile() async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    String? token;
+    try {
+      final file = await openFile(acceptedTypeGroups: const [
+        XTypeGroup(label: 'PS License', extensions: ['pslicense']),
+      ]);
+      if (file != null) {
+        if (await file.length() > 2048) throw const FormatException();
+        token = (await file.readAsString()).trim();
+        if (token.isEmpty) throw const FormatException();
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = 'تعذر قراءة ملف الترخيص.');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (mounted && token != null) await _save(token);
+  }
+
+  Future<void> _save(String token) async {
+    if (_saving || token.trim().isEmpty) return;
     setState(() => _saving = true);
-    final error = await widget.activate(_code.text);
+    final error = await widget.activate(token);
     if (!mounted) return;
     if (error == null && widget.closeOnSuccess) {
       Navigator.pop(context);
@@ -253,16 +278,21 @@ class _LicenseFormState extends State<_LicenseForm> {
           textDirection: TextDirection.ltr,
           autocorrect: false,
           decoration: const InputDecoration(labelText: 'كود التفعيل أو التجديد'),
-          onSubmitted: (_) => _save(),
+          onSubmitted: _save,
         ),
         if (error != null) ...[
           const SizedBox(height: 10),
           Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
         ],
         const SizedBox(height: 16),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: Text(_saving ? 'جاري التحقق…' : 'تفعيل الترخيص'),
+        FilledButton.icon(
+          onPressed: _saving ? null : _openFile,
+          icon: const Icon(Icons.folder_open_outlined),
+          label: Text(_saving ? 'جاري التحقق…' : 'فتح ملف الترخيص'),
+        ),
+        TextButton(
+          onPressed: _saving ? null : () => _save(_code.text),
+          child: const Text('تفعيل بالكود المكتوب'),
         ),
       ],
     );
