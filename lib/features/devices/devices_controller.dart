@@ -19,7 +19,7 @@ class DevicesController {
 
 
   /// تشغيل جهاز فاضي.
-  Future<void> start(int deviceId, {required String mode, int? minutes}) async {
+  Future<void> start(int deviceId, {required String mode, int? minutes, int? customerId}) async {
     if (minutes != null && minutes <= 0) return;
     final device = await (_db.select(_db.devices)..where((t) => t.deviceId.equals(deviceId))).getSingleOrNull();
     if (device == null || device.isActive) return;
@@ -35,7 +35,10 @@ class DevicesController {
         isCountdown: Value(minutes != null),
         countdownTotalSeconds: Value(minutes == null ? null : minutes * 60),
         countdownAlertSent: const Value(false),
-        sessionLogJson: const Value('[]'),
+        sessionLogJson: Value(_log(device.copyWith(sessionLogJson: '[]'), 'بدأت جلسة ${mode == 'multi' ? 'مالتي' : 'عادي'}')),
+        settledTimeCost: const Value(0),
+        segmentStartSeconds: const Value(0),
+        localCustomerId: Value(customerId),
         timerAlertMinutes: const Value(null),
       ));
     if (updated == 0) return;
@@ -46,7 +49,7 @@ class DevicesController {
     );
   }
 
-  Future<bool> recordMatch(int deviceId, String mode) async {
+  Future<bool> recordMatch(int deviceId, String mode, {int? customerId}) => _db.transaction(() async {
     final config = await _db.readConfigOnce();
     if (!config.matchEnabled) return false;
     final device = await (_db.select(_db.devices)..where((t) => t.deviceId.equals(deviceId))).getSingleOrNull();
@@ -59,6 +62,7 @@ class DevicesController {
       name: device.displayName,
       deviceType: Value(device.deviceType),
       isMatch: const Value(true),
+      localCustomerId: Value(customerId),
       total: price,
       timeCost: Value(price),
       cashier: Value(cashier),
@@ -70,57 +74,79 @@ class DevicesController {
       deviceName: device.displayName,
       deviceType: device.deviceType,
     );
+    await _recordVisit(customerId, price, date);
     return true;
-  }
+  });
 
-  Future<void> pause(int deviceId) async {
-    await (_db.update(_db.devices)..where((t) => t.deviceId.equals(deviceId))).write(
-      DevicesCompanion(
-        isPaused: const Value(true),
-        pauseStartTime: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
-      ),
-    );
-  }
+  Future<void> pause(int deviceId) => _db.transaction(() async {
+    final device = await _device(deviceId);
+    if (device == null || !device.isRunning) return;
+    await _write(deviceId, DevicesCompanion(
+      isPaused: const Value(true),
+      pauseStartTime: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
+      sessionLogJson: Value(_log(device, 'إيقاف مؤقت')),
+    ));
+  });
 
-  Future<void> resume(int deviceId) async {
-    final device = await (_db.select(_db.devices)..where((t) => t.deviceId.equals(deviceId))).getSingle();
-    if (!device.isPaused || device.pauseStartTime == null || device.startTime == null) return;
-    // الوقت اللي فات وإحنا متوقفين بيتضاف كـ addedSeconds عشان يفضل العداد صح
-    // بعد الاستئناف (زي resumeDevice في الموبايل: بينقل start_time للأمام).
+  Future<void> resume(int deviceId) => _db.transaction(() async {
+    final device = await _device(deviceId);
+    if (device == null || !device.isActive || !device.isPaused || device.pauseStartTime == null) return;
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final pausedDuration = now - device.pauseStartTime!;
-    await (_db.update(_db.devices)..where((t) => t.deviceId.equals(deviceId))).write(
-      DevicesCompanion(
-        isPaused: const Value(false),
-        pauseStartTime: const Value.absent(),
-        startTime: Value(device.startTime! + pausedDuration),
-      ),
-    );
-  }
+    final pausedDuration = (now - device.pauseStartTime!).clamp(0, 1 << 32).toInt();
+    await _write(deviceId, DevicesCompanion(
+      isPaused: const Value(false),
+      pauseStartTime: const Value(null),
+      startTime: Value(device.startTime! + pausedDuration),
+      sessionLogJson: Value(_log(device, 'استكمال الجلسة')),
+    ));
+  });
 
-  /// إلغاء الجلسة من غير حساب (زي device_cancel في سجل التدقيق) — الجهاز
-  /// يرجع "متاح" على طول من غير ما يتسجل أي فاتورة أو history record.
-  Future<void> cancel(int deviceId) async {
-    final device = await (_db.select(_db.devices)..where((t) => t.deviceId.equals(deviceId))).getSingleOrNull();
-    await (_db.update(_db.devices)..where((t) => t.deviceId.equals(deviceId))).write(
-      const DevicesCompanion(
-        status: Value('متاح'),
-        mode: Value('normal'),
-        addedSeconds: Value(0),
-        isPaused: Value(false),
-        ordersJson: Value('{}'),
-        isCountdown: Value(false),
-        countdownAlertSent: Value(false),
-      ),
+  Future<void> cancel(int deviceId) => _db.transaction(() async {
+    if (ref.read(sessionProvider).role != UserRole.admin) return;
+    final device = await _device(deviceId);
+    if (device == null || !device.isActive) return;
+    await _write(deviceId, _available);
+    AuditLogService.logDevice(
+      action: AuditAction.deviceCancel, deviceName: device.displayName, deviceType: device.deviceType,
     );
-    await _db.customStatement(
-      'UPDATE devices SET start_time = NULL, pause_start_time = NULL, countdown_total_seconds = NULL WHERE device_id = ?',
-      [deviceId],
-    );
-    if (device != null) {
-      AuditLogService.logDevice(action: AuditAction.deviceCancel, deviceName: device.displayName, deviceType: device.deviceType);
+  });
+
+  Future<void> switchMode(int id) => _db.transaction(() async {
+    final device = await _device(id);
+    if (device == null || !device.isRunning) return;
+    final prices = {for (final row in await _db.select(_db.prices).get()) row.priceKey: row.amount};
+    final elapsed = device.elapsedSeconds;
+    final newMode = device.mode == 'multi' ? 'normal' : 'multi';
+    await _write(id, DevicesCompanion(
+      mode: Value(newMode),
+      settledTimeCost: Value(device.timePriceAt(prices, elapsed)),
+      segmentStartSeconds: Value(elapsed),
+      sessionLogJson: Value(_log(device, 'تغيير نوع اللعب إلى ${newMode == 'multi' ? 'مالتي' : 'عادي'}')),
+    ));
+  });
+
+  Future<void> adjustMinutes(int id, int minutes) => _db.transaction(() async {
+    final device = await _device(id);
+    if (device == null || !device.isActive || minutes == 0) return;
+    final event = _log(device, 'تعديل الوقت: ${minutes > 0 ? '+' : ''}$minutes دقيقة');
+    if (device.isCountdown && device.countdownTotalSeconds != null) {
+      final total = (device.countdownTotalSeconds! + minutes * 60).clamp(0, 1 << 32).toInt();
+      await _write(id, DevicesCompanion(
+        countdownTotalSeconds: Value(total),
+        countdownAlertSent: const Value(false),
+        sessionLogJson: Value(event),
+      ));
+    } else {
+      final elapsed = device.elapsedSeconds;
+      final adjusted = elapsed + minutes * 60;
+      final floor = device.segmentStartSeconds;
+      final delta = (adjusted < floor ? floor : adjusted) - elapsed;
+      await _write(id, DevicesCompanion(
+        addedSeconds: Value(device.addedSeconds + delta),
+        sessionLogJson: Value(event),
+      ));
     }
-  }
+  });
 
   Future<bool> transferSession(int sourceId, int destinationId) async {
     if (sourceId == destinationId) return false;
@@ -149,23 +175,12 @@ class DevicesController {
         isCountdown: Value(source.isCountdown),
         countdownTotalSeconds: Value(source.countdownTotalSeconds),
         countdownAlertSent: Value(source.countdownAlertSent),
-        sessionLogJson: Value(source.sessionLogJson),
+        sessionLogJson: Value(_log(source, 'نقل الجلسة من ${source.displayName} إلى ${destination.displayName}')),
+        settledTimeCost: Value(source.settledTimeCost),
+        segmentStartSeconds: Value(source.segmentStartSeconds),
+        localCustomerId: Value(source.localCustomerId),
       ));
-      await (_db.update(_db.devices)..where((t) => t.deviceId.equals(sourceId)))
-          .write(const DevicesCompanion(
-        status: Value('متاح'),
-        mode: Value('normal'),
-        startTime: Value(null),
-        addedSeconds: Value(0),
-        isPaused: Value(false),
-        pauseStartTime: Value(null),
-        ordersJson: Value('{}'),
-        timerAlertMinutes: Value(null),
-        isCountdown: Value(false),
-        countdownTotalSeconds: Value(null),
-        countdownAlertSent: Value(false),
-        sessionLogJson: Value('[]'),
-      ));
+      await _write(sourceId, _available);
       AuditLogService.logDevice(
         action: AuditAction.deviceTransfer,
         deviceName: source.displayName,
@@ -192,18 +207,82 @@ class DevicesController {
     );
   }
 
-  Future<void> addOrder(int deviceId, String itemName, int deltaQty) async {
-    final device = await (_db.select(_db.devices)..where((t) => t.deviceId.equals(deviceId))).getSingle();
-    final orders = Map<String, int>.from(jsonDecode(device.ordersJson) as Map);
-    final newQty = (orders[itemName] ?? 0) + deltaQty;
-    if (newQty <= 0) {
-      orders.remove(itemName);
-    } else {
-      orders[itemName] = newQty;
+  Future<void> addOrder(int deviceId, String itemName, int deltaQty) =>
+      addOrders(deviceId, {itemName: deltaQty});
+
+  Future<void> addOrders(int deviceId, Map<String, int> changes, {int? expectedStartTime}) =>
+      _db.transaction(() async {
+    final device = await _device(deviceId);
+    if (device == null || !device.isActive ||
+        (expectedStartTime != null && device.startTime != expectedStartTime)) {
+      throw StateError('Session changed');
     }
-    await (_db.update(_db.devices)..where((t) => t.deviceId.equals(deviceId)))
-        .write(DevicesCompanion(ordersJson: Value(jsonEncode(orders))));
+    final orders = Map<String, int>.from(jsonDecode(device.ordersJson) as Map);
+    for (final change in changes.entries) {
+      final item = change.key;
+      final next = (orders[item] ?? 0) + change.value;
+      if (change.value > 0) {
+        final menuItem = await (_db.select(_db.menuItems)..where((row) => row.itemName.equals(item))).getSingleOrNull();
+        if (menuItem == null) throw StateError('الصنف $item مش موجود في المنيو');
+        final stock = await (_db.select(_db.inventoryItems)..where((row) => row.itemName.equals(item))).getSingleOrNull();
+        if (stock != null && next > stock.quantity) {
+          throw StateError('المتاح من $item هو ${stock.quantity} فقط');
+        }
+      }
+      if (next > 0) {
+        orders[item] = next;
+      } else {
+        orders.remove(item);
+      }
+    }
+    await _write(deviceId, DevicesCompanion(
+      ordersJson: Value(jsonEncode(orders)),
+      sessionLogJson: Value(_log(device, 'تعديل طلب البوفيه')),
+    ));
+  });
+
+  Future<DeviceRow?> _device(int id) =>
+      (_db.select(_db.devices)..where((row) => row.deviceId.equals(id))).getSingleOrNull();
+
+  Future<int> _write(int id, DevicesCompanion changes) =>
+      (_db.update(_db.devices)..where((row) => row.deviceId.equals(id))).write(changes);
+
+  String _log(DeviceRow device, String note) {
+    final history = jsonDecode(device.sessionLogJson) as List;
+    history.add({'date': DateTime.now().toIso8601String(), 'note': note});
+    return jsonEncode(history);
   }
+
+  Future<void> _recordVisit(int? id, double total, String date) async {
+    if (id == null) return;
+    final query = _db.select(_db.localCustomers)..where((row) => row.id.equals(id));
+    final customer = await query.getSingleOrNull();
+    if (customer == null) return;
+    await (_db.update(_db.localCustomers)..where((row) => row.id.equals(id)))
+        .write(LocalCustomersCompanion(
+      visits: Value(customer.visits + 1),
+      totalSpent: Value(customer.totalSpent + total),
+      lastVisit: Value(date),
+    ));
+  }
+
+  static const _available = DevicesCompanion(
+    status: Value('متاح'),
+    mode: Value('normal'),
+    startTime: Value(null),
+    addedSeconds: Value(0),
+    isPaused: Value(false),
+    pauseStartTime: Value(null),
+    ordersJson: Value('{}'),
+    timerAlertMinutes: Value(null),
+    isCountdown: Value(false),
+    countdownTotalSeconds: Value(null),
+    countdownAlertSent: Value(false),
+    sessionLogJson: Value('[]'),
+    settledTimeCost: Value(0),
+    segmentStartSeconds: Value(0),
+    localCustomerId: Value(null),
+  );
 
   /// إنهاء الجلسة — يحسب التكلفة، يسجّل في السجل، ويرجّع الجهاز لحالة "متاح".
   Future<Map<String, dynamic>?> stop(int deviceId, {required String closedBy}) => _db.transaction(() async {
@@ -229,6 +308,7 @@ class DevicesController {
       elapsedSeconds: Value(elapsed),
       ordersJson: Value(jsonEncode(orders)),
       cashier: Value(closedBy),
+      localCustomerId: Value(device.localCustomerId),
       date: DateTime.now().toString(),
       createdAt: DateTime.now().toIso8601String(),
     );
@@ -236,20 +316,8 @@ class DevicesController {
 
     await _db.deductSoldItems(orders);
 
-    await (_db.update(_db.devices)..where((t) => t.deviceId.equals(deviceId)))
-        .write(const DevicesCompanion(
-      status: Value('متاح'),
-      mode: Value('normal'),
-      startTime: Value(null),
-      addedSeconds: Value(0),
-      isPaused: Value(false),
-      pauseStartTime: Value(null),
-      ordersJson: Value('{}'),
-      timerAlertMinutes: Value(null),
-      isCountdown: Value(false),
-      countdownTotalSeconds: Value(null),
-      countdownAlertSent: Value(false),
-    ));
+    await _recordVisit(device.localCustomerId, total, DateTime.now().toIso8601String());
+    await _write(deviceId, _available);
 
     AuditLogService.logDevice(
       action: AuditAction.deviceStop,

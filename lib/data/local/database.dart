@@ -43,6 +43,10 @@ class Devices extends Table {
   BoolColumn get countdownAlertSent => boolean().withDefault(const Constant(false))();
   TextColumn get sessionLogJson => text().withDefault(const Constant('[]'))();
 
+  RealColumn get settledTimeCost => real().withDefault(const Constant(0))();
+  IntColumn get segmentStartSeconds => integer().withDefault(const Constant(0))();
+  IntColumn get localCustomerId => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {deviceId};
 }
@@ -234,6 +238,7 @@ class Tournaments extends Table {
 @DataClassName('HistoryRecordRow')
 class HistoryRecords extends Table {
   IntColumn get rowId => integer().autoIncrement()();
+  IntColumn get localCustomerId => integer().nullable()();
   TextColumn get cashier => text().nullable()();
   TextColumn get remoteKey => text().nullable()(); // مفتاح الـ push في Firebase لو اتزامن
   TextColumn get name => text()();
@@ -387,7 +392,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -402,6 +407,12 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(localAuditEvents);
           }
           if (from < 4) await m.createTable(desktopLicenses);
+          if (from < 5) {
+            await m.addColumn(devices, devices.settledTimeCost);
+            await m.addColumn(devices, devices.segmentStartSeconds);
+            await m.addColumn(devices, devices.localCustomerId);
+            await m.addColumn(historyRecords, historyRecords.localCustomerId);
+          }
         },
       );
 

@@ -12,10 +12,11 @@ extension DeviceLogic on DeviceRow {
 
   int get elapsedSeconds {
     if (startTime == null) return 0;
-    if (isPaused && pauseStartTime != null) {
-      return (pauseStartTime! - startTime!) + addedSeconds;
-    }
-    return (DateTime.now().millisecondsSinceEpoch ~/ 1000 - startTime!) + addedSeconds;
+    final now = isPaused && pauseStartTime != null
+        ? pauseStartTime!
+        : DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final elapsed = now - startTime! + addedSeconds;
+    return elapsed < 0 ? 0 : elapsed;
   }
 
   int get remainingSeconds {
@@ -31,9 +32,14 @@ extension DeviceLogic on DeviceRow {
   /// (مثلاً ps4_normal / ps5_multi)، وبيرجع لسعر افتراضي لو المفتاح مش موجود.
   double calculateTimePrice(Map<String, int> prices) {
     if (startTime == null) return 0;
+    return timePriceAt(prices, elapsedSeconds);
+  }
+
+  double timePriceAt(Map<String, int> prices, int elapsed) {
     final key = '${deviceType}_$mode';
     final rate = prices[key] ?? (deviceType == 'ps5' ? 35 : 25);
-    return (elapsedSeconds / 3600) * rate;
+    final segmentSeconds = elapsed - segmentStartSeconds;
+    return settledTimeCost + ((segmentSeconds < 0 ? 0 : segmentSeconds) / 3600) * rate;
   }
 
   /// سعر الماتش الثابت (منفصل عن سعر الساعة) — بيدور على `match_${type}_${mode}`.

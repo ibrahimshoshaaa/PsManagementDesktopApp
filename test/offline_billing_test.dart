@@ -47,6 +47,49 @@ void main() {
     expect((await db.select(db.devices).getSingle()).startTime, isNull);
   });
 
+  test('device changes rate mid-session and links the receipt to its customer', () async {
+    final customerId = await db.into(db.localCustomers).insert(
+      LocalCustomersCompanion.insert(name: 'Customer', phone: '01012345678'),
+    );
+    await db.into(db.devices).insert(DevicesCompanion.insert(
+      deviceId: const Value(0),
+      displayName: 'PS 01',
+    ));
+    final controller = container.read(devicesControllerProvider);
+    await controller.start(0, mode: 'normal', customerId: customerId);
+    final epoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    await db.update(db.devices).write(DevicesCompanion(startTime: Value(epoch - 3600)));
+    await controller.switchMode(0);
+    final device = await db.select(db.devices).getSingle();
+    expect(device.mode, 'multi');
+    expect(device.settledTimeCost, closeTo(25, 0.02));
+    await db.update(db.devices).write(DevicesCompanion(
+      isPaused: const Value(true),
+      pauseStartTime: Value(device.startTime! + device.segmentStartSeconds + 3600),
+    ));
+    await controller.addOrders(0, {'Tea': 2});
+    final result = await controller.stop(0, closedBy: 'Cashier');
+    expect(result!['time_cost'], closeTo(60, 0.02));
+    expect(result['total'], closeTo(80, 0.02));
+    final invoice = await db.select(db.historyRecords).getSingle();
+    expect(invoice.localCustomerId, customerId);
+    final customer = await db.select(db.localCustomers).getSingle();
+    expect(customer.visits, 1);
+    expect(customer.totalSpent, closeTo(80, 0.02));
+  });
+
+  test('overstock buffet selection rolls back all changes', () async {
+    await db.into(db.devices).insert(DevicesCompanion.insert(
+      deviceId: const Value(0),
+      displayName: 'PS 01',
+      startTime: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
+    ));
+    await db.into(db.menuItems).insert(MenuItemsCompanion.insert(itemName: 'Coffee', price: 15));
+    final controller = container.read(devicesControllerProvider);
+    await expectLater(controller.addOrders(0, {'Coffee': 1, 'Tea': 6}), throwsStateError);
+    expect((await db.select(db.devices).getSingle()).ordersJson, '{}');
+  });
+
   test('game checkout rejects an unset fixed rate and keeps the active session', () async {
     await db.into(db.gameTables).insert(GameTablesCompanion.insert(
       tableId: const Value(0), name: 'Table 01', rate: const Value(60),

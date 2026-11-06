@@ -8,6 +8,7 @@ import '../../data/local/database.dart';
 import '../../domain/device_logic.dart';
 import '../../providers/core_providers.dart';
 import 'devices_controller.dart';
+import 'device_session_dialog.dart';
 
 class DevicesScreen extends ConsumerStatefulWidget {
   const DevicesScreen({super.key});
@@ -149,7 +150,6 @@ class _DeviceCard extends ConsumerWidget {
 
     final isPs5 = device.deviceType == 'ps5';
     final glowColor = device.countdownFinished ? AppColors.red : device.isPaused ? AppColors.amber : AppColors.accent;
-    final statusColor = isActive ? glowColor : Colors.white24;
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
@@ -165,7 +165,7 @@ class _DeviceCard extends ConsumerWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => isActive ? _showDeviceSheet(context, ref) : _showStartDialog(context, ref),
+          onTap: () => openDeviceSession(context, device),
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Column(
@@ -218,7 +218,7 @@ class _DeviceCard extends ConsumerWidget {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.tonal(
-                      onPressed: () => _showStartDialog(context, ref),
+                      onPressed: () => openDeviceSession(context, device),
                       child: const Text('تشغيل'),
                     ),
                   )
@@ -236,7 +236,7 @@ class _DeviceCard extends ConsumerWidget {
                       Expanded(
                         child: IconButton.filledTonal(
                           style: IconButton.styleFrom(backgroundColor: AppColors.orange.withOpacity(0.2)),
-                          onPressed: () => _showDeviceSheet(context, ref),
+                          onPressed: () => openDeviceSession(context, device, buffet: true),
                           icon: const Icon(Icons.fastfood, color: AppColors.orange),
                         ),
                       ),
@@ -244,8 +244,8 @@ class _DeviceCard extends ConsumerWidget {
                       Expanded(
                         child: IconButton.filledTonal(
                           style: IconButton.styleFrom(backgroundColor: AppColors.redDark.withOpacity(0.3)),
-                          onPressed: () => _confirmStop(context, ref),
-                          icon: const Icon(Icons.stop, color: AppColors.red),
+                          onPressed: () => openDeviceSession(context, device),
+                          icon: const Icon(Icons.receipt_long, color: AppColors.red),
                         ),
                       ),
                     ],
@@ -258,243 +258,6 @@ class _DeviceCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _showStartDialog(BuildContext context, WidgetRef ref) async {
-    final controller = ref.read(devicesControllerProvider);
-    final matchEnabled = ref.read(appConfigProvider).valueOrNull?.matchEnabled ?? false;
-    var mode = 'normal';
-    var fixed = false;
-    var minutes = '';
-    final form = GlobalKey<FormState>();
-    final action = await showDialog<String>(
-      context: context,
-      builder: (dialog) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
-          title: Text('تشغيل ${device.displayName}'),
-          content: SizedBox(
-            width: 340,
-            child: Form(
-              key: form,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'normal', label: Text('عادي')),
-                      ButtonSegment(value: 'multi', label: Text('مالتي')),
-                    ],
-                    selected: {mode},
-                    onSelectionChanged: (values) => update(() => mode = values.single),
-                  ),
-                  const SizedBox(height: 14),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('وقت محدد'),
-                    value: fixed,
-                    onChanged: (value) => update(() => fixed = value),
-                  ),
-                  if (fixed)
-                    TextFormField(
-                      decoration: const InputDecoration(labelText: 'عدد الدقائق'),
-                      keyboardType: TextInputType.number,
-                      onChanged: (value) => minutes = value.trim(),
-                      validator: (value) {
-                        final count = int.tryParse(value?.trim() ?? '');
-                        return count == null || count <= 0 ? 'اكتب عدد دقائق أكبر من صفر' : null;
-                      },
-                    ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(dialog), child: const Text('إلغاء')),
-            if (matchEnabled)
-              OutlinedButton(
-                onPressed: () => Navigator.pop(dialog, 'match'),
-                child: const Text('تسجيل ماتش'),
-              ),
-            FilledButton(
-              onPressed: () {
-                if (form.currentState!.validate()) Navigator.pop(dialog, 'start');
-              },
-              child: const Text('تشغيل الجلسة'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (action == 'match') {
-      final recorded = await controller.recordMatch(device.deviceId, mode);
-      if (recorded && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسجيل الماتش')));
-      }
-    } else if (action == 'start') {
-      await controller.start(device.deviceId, mode: mode, minutes: fixed ? int.parse(minutes) : null);
-    }
-  }
-
-  void _confirmStop(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('إنهاء الجلسة؟'),
-        content: Text('هيتم حساب فاتورة ${device.displayName} وتسجيلها في السجل.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('إنهاء')),
-        ],
-      ),
-    );
-    if (confirmed == true && context.mounted) {
-      final session = ref.read(sessionProvider);
-      final result = await ref
-          .read(devicesControllerProvider)
-          .stop(device.deviceId, closedBy: session.cashierName ?? 'أدمن');
-      if (context.mounted && result != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('الإجمالي: ${(result['total'] as double).toStringAsFixed(1)} ج')),
-        );
-      }
-    }
-  }
-
-  void _showDeviceSheet(BuildContext context, WidgetRef ref) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 620),
-          child: SingleChildScrollView(child: _DeviceDetailSheet(device: device)),
-        ),
-      ),
-    );
-  }
-}
-
-/// شيت تفاصيل — أوردرات، مؤقت تنبيه، عد تنازلي، وإلغاء من غير حساب.
-class _DeviceDetailSheet extends ConsumerStatefulWidget {
-  final DeviceRow device;
-  const _DeviceDetailSheet({required this.device});
-
-  @override
-  ConsumerState<_DeviceDetailSheet> createState() => _DeviceDetailSheetState();
-}
-
-class _DeviceDetailSheetState extends ConsumerState<_DeviceDetailSheet> {
-  @override
-  Widget build(BuildContext context) {
-    final devices = ref.watch(devicesStreamProvider).valueOrNull ?? [];
-    final device = devices.where((row) => row.deviceId == widget.device.deviceId).firstOrNull ?? widget.device;
-    final destinations = devices.where((row) =>
-        row.deviceId != device.deviceId && !row.isActive && row.deviceType == device.deviceType).toList();
-    final menu = ref.watch(menuItemsStreamProvider).valueOrNull ?? [];
-    final controller = ref.read(devicesControllerProvider);
-
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(device.displayName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-          const SizedBox(height: 16),
-          if (device.isActive) ...[
-            Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    initialValue: device.timerAlertMinutes?.toString(),
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'تنبيه بعد (دقيقة)'),
-                    onFieldSubmitted: (v) => controller.setTimerAlert(device.deviceId, int.tryParse(v)),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
-                    initialValue: device.isCountdown && device.countdownTotalSeconds != null
-                        ? (device.countdownTotalSeconds! ~/ 60).toString()
-                        : null,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'عد تنازلي (دقيقة)'),
-                    onFieldSubmitted: (v) => controller.setCountdown(device.deviceId, int.tryParse(v)),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-          ],
-          if (destinations.isNotEmpty) ...[
-            OutlinedButton.icon(
-              icon: const Icon(Icons.swap_horiz),
-              label: const Text('نقل الجلسة'),
-              onPressed: () async {
-                final destination = await showDialog<int>(
-                  context: context,
-                  builder: (dialog) => SimpleDialog(
-                    title: const Text('اختار جهاز متاح من نفس النوع'),
-                    children: [
-                      for (final row in destinations)
-                        SimpleDialogOption(
-                          onPressed: () => Navigator.pop(dialog, row.deviceId),
-                          child: Text(row.displayName),
-                        ),
-                    ],
-                  ),
-                );
-                if (destination == null || !context.mounted) return;
-                final moved = await controller.transferSession(device.deviceId, destination);
-                if (moved && context.mounted) Navigator.pop(context);
-              },
-            ),
-            const SizedBox(height: 16),
-          ],
-          const Text('أضف من البوفيه', style: TextStyle(color: Colors.white70)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: menu
-                .map((m) => ActionChip(
-                      label: Text('${m.itemName} (${m.price} ج)'),
-                      onPressed: () => controller.addOrder(device.deviceId, m.itemName, 1),
-                    ))
-                .toList(),
-          ),
-          if (device.isActive) ...[
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(foregroundColor: AppColors.red),
-                onPressed: () async {
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('إلغاء الجلسة من غير حساب؟'),
-                      content: const Text('مش هيتسجل أي فاتورة، والجهاز هيرجع متاح على طول.'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('تراجع')),
-                        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('إلغاء الجلسة')),
-                      ],
-                    ),
-                  );
-                  if (confirmed == true) {
-                    await controller.cancel(device.deviceId);
-                    if (context.mounted) Navigator.pop(context);
-                  }
-                },
-                icon: const Icon(Icons.cancel_outlined),
-                label: const Text('إلغاء الجلسة من غير حساب'),
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-        ],
-      ),
-    );
-  }
 }
 
 class _Badge extends StatelessWidget {

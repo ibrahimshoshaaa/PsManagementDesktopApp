@@ -181,7 +181,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                         child: ListTile(
                           leading: const CircleAvatar(child: Icon(Icons.person_outline)),
                           title: Text(row.name.isEmpty ? row.phone : row.name),
-                          subtitle: Text(row.phone),
+                          subtitle: Text('${row.phone} • ${row.visits} زيارة • ${row.totalSpent.toStringAsFixed(2)} ج'),
                           trailing: Wrap(
                             children: [
                               IconButton(
