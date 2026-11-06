@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/core_providers.dart';
 import 'recharge_controller.dart';
+import '../../data/local/database.dart';
+import 'package:flutter/services.dart';
+import '../shared/operation_dialog.dart';
 
 class RechargeScreen extends ConsumerWidget {
   const RechargeScreen({super.key});
@@ -25,16 +30,15 @@ class RechargeScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text('الشحن', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-              const Spacer(),
+          ScreenIntro(
+            icon: Icons.battery_charging_full, title: 'الشحن',
+            description: 'تابع رصيد الشحن وسجّل العمليات من هنا.',
+            actions: [
               OutlinedButton.icon(
                 onPressed: () => _showTopUpDialog(context, controller, cashier),
                 icon: const Icon(Icons.add_card),
                 label: const Text('شحن رصيد'),
               ),
-              const SizedBox(width: 12),
               FilledButton.icon(
                 onPressed: () => _showRedeemDialog(context, controller, cashier, cards),
                 icon: const Icon(Icons.qr_code),
@@ -124,108 +128,122 @@ class RechargeScreen extends ConsumerWidget {
     );
   }
 
-  void _showAddCardDialog(BuildContext context, RechargeController controller) {
-    final nameController = TextEditingController();
-    final valueController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('كارت جديد'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'اسم الكارت')),
-            const SizedBox(height: 12),
-            TextField(controller: valueController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'القيمة')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () {
-              final value = int.tryParse(valueController.text);
-              if (nameController.text.trim().isEmpty || value == null) return;
-              controller.addCard(nameController.text.trim(), value);
-              Navigator.pop(context);
-            },
-            child: const Text('إضافة'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _showAddCardDialog(BuildContext context, RechargeController controller) {
+    var name = '', value = '';
+    return showOperationDialog(context, title: 'إضافة كارت شحن', action: 'حفظ الكارت', fields: [
+      _name('اسم الكارت', (text) => name = text),
+      _amount('قيمة الكارت', (text) => value = text),
+    ], save: () => controller.addCard(name, int.parse(value)));
   }
 
-  void _showTopUpDialog(BuildContext context, RechargeController controller, String cashier) {
-    final amountController = TextEditingController();
-    final noteController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('شحن رصيد'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المبلغ')),
-            const SizedBox(height: 12),
-            TextField(controller: noteController, decoration: const InputDecoration(labelText: 'ملاحظة')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () {
-              final amount = double.tryParse(amountController.text);
-              if (amount == null) return;
-              controller.addBalance(amount, noteController.text.trim(), cashier: cashier);
-              Navigator.pop(context);
-            },
-            child: const Text('شحن'),
-          ),
-        ],
-      ),
-    );
+  Future<void> _showTopUpDialog(BuildContext context, RechargeController controller, String cashier) {
+    var amount = '', note = '';
+    return showOperationDialog(context, title: 'إضافة رصيد شحن', action: 'حفظ العملية', fields: [
+      _amount('قيمة الشحن', (text) => amount = text),
+      TextFormField(decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)'),
+        onChanged: (text) => note = text.trim()),
+    ], save: () => controller.addBalance(double.parse(amount), note, cashier: cashier));
   }
 
-  void _showRedeemDialog(BuildContext context, RechargeController controller, String cashier, List cards) {
-    final nameController = TextEditingController();
-    final valueController = TextEditingController();
-    String type = 'card';
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('استخدام كارت / شحن حر'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'card', label: Text('كارت')),
-                  ButtonSegment(value: 'free', label: Text('شحن حر')),
-                ],
-                selected: {type},
-                onSelectionChanged: (s) => setState(() => type = s.first),
-              ),
-              const SizedBox(height: 12),
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'اسم العميل/الكارت')),
-              const SizedBox(height: 12),
-              TextField(controller: valueController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'القيمة')),
+  Future<void> _showRedeemDialog(BuildContext context, RechargeController controller, String cashier, List<RechargeCardRow> cards) {
+    return showDialog<void>(context: context, builder: (_) => _RedeemDialog(
+      cards: cards, submit: ({required type, required name, required value}) =>
+        controller.redeem(type: type, name: name, value: value, cashier: cashier),
+    ));
+  }
+}
+
+Widget _name(String label, ValueChanged<String> changed) => TextFormField(
+  autofocus: true, textInputAction: TextInputAction.next,
+  decoration: InputDecoration(labelText: label),
+  validator: (value) => value == null || value.trim().isEmpty ? 'اكتب الاسم' : null,
+  onChanged: (value) => changed(value.trim()),
+);
+
+Widget _amount(String label, ValueChanged<String> changed) => TextFormField(
+  keyboardType: TextInputType.number,
+  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+  decoration: InputDecoration(labelText: label, suffixText: 'ج', prefixIcon: const Icon(Icons.payments_outlined)),
+  validator: (value) {
+    final amount = int.tryParse(value ?? '');
+    return amount == null || amount <= 0 ? 'اكتب قيمة أكبر من صفر' : null;
+  },
+  onChanged: changed,
+);
+
+class _RedeemDialog extends StatefulWidget {
+  const _RedeemDialog({required this.cards, required this.submit});
+  final List<RechargeCardRow> cards;
+  final Future<void> Function({required String type, required String name, required double value}) submit;
+
+  @override
+  State<_RedeemDialog> createState() => _RedeemDialogState();
+}
+
+class _RedeemDialogState extends State<_RedeemDialog> {
+  final _form = GlobalKey<FormState>();
+  late bool _free = widget.cards.isEmpty;
+  RechargeCardRow? _card;
+  String _clientName = '', _value = '';
+  String? _error;
+  bool _busy = false;
+
+  Future<void> _save() async {
+    if (_busy || !_form.currentState!.validate()) return;
+    final card = _card;
+    if (!_free && card == null) {
+      setState(() => _error = 'اختار الكارت الأول.');
+      return;
+    }
+    setState(() { _busy = true; _error = null; });
+    try {
+      await widget.submit(type: _free ? 'free' : 'card', name: _clientName,
+        value: _free ? double.parse(_value) : card!.value.toDouble());
+      if (mounted) Navigator.pop(context);
+    } catch (error) {
+      if (mounted) setState(() {
+        _busy = false;
+        _error = error is StateError ? error.message.toString() : 'تعذر حفظ العملية.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('استخدام رصيد الشحن'),
+    content: SizedBox(width: 460, child: SingleChildScrollView(child: Form(
+      key: _form,
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (widget.cards.isNotEmpty) ...[
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('كارت محفوظ'), icon: Icon(Icons.credit_card)),
+              ButtonSegment(value: true, label: Text('شحن حر'), icon: Icon(Icons.edit_outlined)),
             ],
+            selected: {_free},
+            onSelectionChanged: _busy ? null : (values) => setState(() { _free = values.single; _error = null; }),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            FilledButton(
-              onPressed: () {
-                final value = double.tryParse(valueController.text);
-                if (nameController.text.trim().isEmpty || value == null) return;
-                controller.redeem(type: type, name: nameController.text.trim(), value: value, cashier: cashier);
-                Navigator.pop(context);
-              },
-              child: const Text('تأكيد'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+          const SizedBox(height: 14),
+        ],
+        _name('اسم العميل', (value) => _clientName = value),
+        const SizedBox(height: 12),
+        if (_free)
+          _amount('القيمة بالجنيه', (value) => _value = value)
+        else
+          DropdownButtonFormField<RechargeCardRow>(
+            decoration: const InputDecoration(labelText: 'اختار كارت'),
+            isExpanded: true,
+            items: [for (final row in widget.cards)
+              DropdownMenuItem(value: row, child: Text('${row.name} • ${row.value} ج'))],
+            onChanged: (value) => setState(() => _card = value),
+          ),
+        if (_error != null) Padding(padding: const EdgeInsets.only(top: 12),
+          child: Text(_error!, style: const TextStyle(color: AppColors.red))),
+      ]),
+    ))),
+    actions: [
+      TextButton(onPressed: _busy ? null : () => Navigator.pop(context), child: const Text('رجوع')),
+      FilledButton.icon(onPressed: _busy ? null : _save, icon: const Icon(Icons.check), label: const Text('تسجيل الشحن')),
+    ],
+  );
 }

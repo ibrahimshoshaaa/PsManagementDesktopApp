@@ -11,6 +11,9 @@ import 'menu_item_dialog.dart';
 import '../shared/operation_dialog.dart';
 import '../../data/local/database.dart';
 import '../cashier/cashiers_screen.dart';
+import '../inventory/inventory_screen.dart';
+import '../buffet/buffet_categories_screen.dart';
+import '../shared/screen_ui.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -26,8 +29,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ('الأجهزة والتربيزات', Icons.sports_esports_outlined, _DevicesTablesTab()),
     ('الأسعار', Icons.payments_outlined, _PricesTab()),
     ('حسابات الكاشير', Icons.manage_accounts_outlined, CashiersScreen()),
-    ('المنيو والأقسام', Icons.restaurant_menu, _MenuTab()),
-    ('المخزون', Icons.inventory_2_outlined, _InventoryTab()),
+    ('أصناف المنيو', Icons.restaurant_menu, _MenuTab()),
+    ('أقسام البوفيه', Icons.category_outlined, BuffetCategoriesScreen()),
+    ('المخزون', Icons.inventory_2_outlined, InventoryScreen()),
   ];
 
   @override
@@ -324,100 +328,77 @@ class _DevicesTablesTab extends ConsumerWidget {
     ], save: () => controller.updateGameTable(row.tableId, name: name, rate: int.parse(rate), gamePrice: int.parse(game)));
   }
 
-  void _showAddDeviceDialog(BuildContext context, SettingsController controller) {
-    final nameController = TextEditingController();
-    String type = 'ps4';
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('جهاز جديد'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'الاسم')),
-              const SizedBox(height: 12),
-              SegmentedButton<String>(
-                segments: const [ButtonSegment(value: 'ps4', label: Text('PS4')), ButtonSegment(value: 'ps5', label: Text('PS5'))],
-                selected: {type},
-                onSelectionChanged: (s) => setState(() => type = s.first),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            FilledButton(
-              onPressed: () {
-                if (nameController.text.trim().isEmpty) return;
-                controller.addDevice(displayName: nameController.text.trim(), deviceType: type);
-                Navigator.pop(context);
-              },
-              child: const Text('إضافة'),
-            ),
+  Future<void> _showAddDeviceDialog(BuildContext context, SettingsController controller) {
+    var name = '', type = 'ps4';
+    return showOperationDialog(context, title: 'إضافة جهاز بلايستيشن', action: 'حفظ الجهاز',
+      fields: [
+        _nameField('اسم الجهاز', (value) => name = value, hint: 'مثال: جهاز ١'),
+        DropdownButtonFormField<String>(
+          value: type,
+          decoration: const InputDecoration(labelText: 'نوع الجهاز', prefixIcon: Icon(Icons.sports_esports_outlined)),
+          items: const [
+            DropdownMenuItem(value: 'ps4', child: Text('PlayStation 4')),
+            DropdownMenuItem(value: 'ps5', child: Text('PlayStation 5')),
           ],
+          onChanged: (value) { if (value != null) type = value; },
         ),
-      ),
+      ],
+      save: () => controller.addDevice(displayName: name, deviceType: type),
     );
   }
 
-  void _showAddTableDialog(BuildContext context, SettingsController controller) {
-    final nameController = TextEditingController();
-    final rateController = TextEditingController();
-    final gamePriceController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تربيزة جديدة'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'الاسم')),
-            const SizedBox(height: 12),
-            TextField(controller: rateController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'سعر الساعة')),
-            const SizedBox(height: 12),
-            TextField(controller: gamePriceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'سعر اللعبة (اختياري)')),
+  Future<void> _showAddTableDialog(BuildContext context, SettingsController controller) {
+    var name = '', rate = '', game = '', type = 'ping';
+    return showOperationDialog(context, title: 'إضافة تربيزة لعب', action: 'حفظ التربيزة',
+      fields: [
+        _nameField('اسم التربيزة', (value) => name = value),
+        DropdownButtonFormField<String>(
+          value: type,
+          decoration: const InputDecoration(labelText: 'نوع اللعب', prefixIcon: Icon(Icons.table_bar)),
+          items: const [
+            DropdownMenuItem(value: 'ping', child: Text('بينج')),
+            DropdownMenuItem(value: 'billiard', child: Text('بلياردو')),
           ],
+          onChanged: (value) { if (value != null) type = value; },
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () {
-              if (nameController.text.trim().isEmpty) return;
-              controller.addTable(
-                name: nameController.text.trim(),
-                rate: int.tryParse(rateController.text) ?? 0,
-                gamePrice: int.tryParse(gamePriceController.text) ?? 0,
-              );
-              Navigator.pop(context);
-            },
-            child: const Text('إضافة'),
-          ),
-        ],
-      ),
+        _priceField('سعر الساعة', (value) => rate = value),
+        _priceField('سعر اللعبة (اختياري)', (value) => game = value, optional: true),
+      ],
+      save: () => controller.addTable(name: name, rate: int.parse(rate), tableType: type,
+        gamePrice: int.tryParse(game) ?? 0),
     );
   }
 
-  void _showAddDrinkTableDialog(BuildContext context, SettingsController controller) {
-    final nameController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('تربيزة مشروبات جديدة'),
-        content: TextField(controller: nameController, decoration: const InputDecoration(labelText: 'الاسم')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () {
-              if (nameController.text.trim().isEmpty) return;
-              controller.addDrinkTable(name: nameController.text.trim());
-              Navigator.pop(context);
-            },
-            child: const Text('إضافة'),
-          ),
-        ],
-      ),
+  Future<void> _showAddDrinkTableDialog(BuildContext context, SettingsController controller) {
+    var name = '';
+    return showOperationDialog(context, title: 'إضافة تربيزة مشروبات', action: 'حفظ التربيزة',
+      fields: [
+        _nameField('اسم التربيزة', (value) => name = value),
+        const Text('الحساب هنا لأصناف البوفيه فقط.'),
+      ],
+      save: () => controller.addDrinkTable(name: name),
     );
   }
+
+  Widget _nameField(String label, ValueChanged<String> changed, {String? hint}) => TextFormField(
+    autofocus: true, textInputAction: TextInputAction.next,
+    decoration: InputDecoration(labelText: label, hintText: hint, prefixIcon: const Icon(Icons.edit_outlined)),
+    onChanged: (value) => changed(value.trim()),
+    validator: (value) => value == null || value.trim().isEmpty ? 'اكتب الاسم' : null,
+  );
+
+  Widget _priceField(String label, ValueChanged<String> changed, {bool optional = false}) => TextFormField(
+    keyboardType: TextInputType.number,
+    decoration: InputDecoration(labelText: label, suffixText: 'ج'),
+    onChanged: (value) => changed(value.trim()),
+    validator: (value) {
+      final raw = value?.trim() ?? '';
+      if (optional && raw.isEmpty) return null;
+      final number = int.tryParse(raw);
+      return number == null || number < 0 ? 'اكتب سعرًا صحيحًا' : null;
+    },
+  );
+
 }
 
 // ═══════════════════════════════════════════════════════ الأسعار ═════
@@ -446,25 +427,36 @@ class _PricesTab extends ConsumerWidget {
 
     return ListView(
       padding: const EdgeInsets.all(20),
-      children: prices
-          .map((p) => ListTile(
-                title: Text(_priceLabel(p.priceKey), style: const TextStyle(color: Colors.white)),
-                trailing: SizedBox(
-                  width: 100,
-                  child: TextFormField(
-                    initialValue: p.amount.toString(),
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(suffixText: 'ج'),
-                    onFieldSubmitted: (v) {
-                      final amount = int.tryParse(v);
-                      if (amount != null && amount >= 0) controller.setPrice(p.priceKey, amount);
-                    },
-                  ),
-                ),
-              ))
-          .toList(),
+      children: [
+        const ScreenIntro(icon: Icons.payments_outlined, title: 'أسعار اللعب',
+          description: 'اختار السعر اللي عايز تعدّله، وبعدها اضغط حفظ.'),
+        const SizedBox(height: 14),
+        for (final price in prices)
+          Card(child: ListTile(
+            title: Text(_priceLabel(price.priceKey)),
+            subtitle: Text('${price.amount} ج'),
+            trailing: IconButton(
+              tooltip: 'تعديل السعر',
+              onPressed: () => _editPrice(context, controller, price),
+              icon: const Icon(Icons.edit_outlined),
+            ),
+          )),
+      ],
     );
+
+  }
+
+  Future<void> _editPrice(BuildContext context, SettingsController controller, PriceRow price) {
+    var value = price.amount.toString();
+    return showOperationDialog(context, title: _priceLabel(price.priceKey), action: 'حفظ السعر',
+      fields: [TextFormField(initialValue: value, autofocus: true, keyboardType: TextInputType.number,
+        decoration: const InputDecoration(labelText: 'السعر الجديد', suffixText: 'ج'),
+        onChanged: (text) => value = text.trim(),
+        validator: (text) {
+          final amount = int.tryParse(text?.trim() ?? '');
+          return amount == null || amount < 0 ? 'اكتب سعرًا صحيحًا' : null;
+        })],
+      save: () => controller.setPrice(price.priceKey, int.parse(value)));
   }
 }
 
@@ -503,12 +495,6 @@ class _MenuTab extends ConsumerWidget {
                 ),
               ]),
             )),
-        const SizedBox(height: 24),
-        _SectionHeader(title: 'أقسام البوفيه (${categories.length})', onAdd: () => _showAddCategoryDialog(context, controller)),
-        ...categories.map((c) => ListTile(
-              leading: Text(c.emoji, style: const TextStyle(fontSize: 20)),
-              title: Text(c.name, style: const TextStyle(color: Colors.white)),
-            )),
       ],
     );
   }
@@ -536,84 +522,7 @@ class _MenuTab extends ConsumerWidget {
     }
   }
 
-  void _showAddCategoryDialog(BuildContext context, SettingsController controller) {
-    final nameController = TextEditingController();
-    final emojiController = TextEditingController(text: '🍽');
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('قسم بوفيه جديد'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'الاسم')),
-            const SizedBox(height: 12),
-            TextField(controller: emojiController, decoration: const InputDecoration(labelText: 'إيموجي')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () {
-              if (nameController.text.trim().isEmpty) return;
-              final id = nameController.text.trim().toLowerCase().replaceAll(' ', '_');
-              controller.addBuffetCategory(id: id, name: nameController.text.trim(), emoji: emojiController.text.trim());
-              Navigator.pop(context);
-            },
-            child: const Text('إضافة'),
-          ),
-        ],
-      ),
-    );
-  }
 }
-
-// ═══════════════════════════════════════════════════════════ المخزون ═════
-
-class _InventoryTab extends ConsumerWidget {
-  const _InventoryTab();
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final items = ref.watch(inventoryStreamProvider).valueOrNull ?? [];
-    final menuItems = ref.watch(menuItemsStreamProvider).valueOrNull ?? [];
-    final controller = ref.read(settingsControllerProvider);
-    final trackedNames = items.map((i) => i.itemName).toSet();
-    final untracked = menuItems.where((m) => !trackedNames.contains(m.itemName)).toList();
-
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        ...items.map((i) => ListTile(
-              title: Text(i.itemName, style: const TextStyle(color: Colors.white)),
-              trailing: SizedBox(
-                width: 100,
-                child: TextFormField(
-                  initialValue: i.quantity.toString(),
-                  keyboardType: TextInputType.number,
-                  style: const TextStyle(color: Colors.white),
-                  onFieldSubmitted: (v) {
-                    final qty = int.tryParse(v);
-                    if (qty != null) controller.setInventoryQuantity(i.itemName, qty);
-                  },
-                ),
-              ),
-            )),
-        if (untracked.isNotEmpty) ...[
-          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('أصناف من غير تتبع مخزون', style: TextStyle(color: Colors.white38))),
-          ...untracked.map((m) => ListTile(
-                title: Text(m.itemName, style: const TextStyle(color: Colors.white54)),
-                trailing: TextButton(
-                  onPressed: () => controller.setInventoryQuantity(m.itemName, 0),
-                  child: const Text('ابدأ تتبع'),
-                ),
-              )),
-        ],
-      ],
-    );
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════ Shared ═
 
 class _SectionHeader extends StatelessWidget {
   final String title;

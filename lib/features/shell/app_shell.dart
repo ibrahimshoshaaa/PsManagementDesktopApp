@@ -25,6 +25,7 @@ import '../buffet/buffet_categories_screen.dart';
 import '../cashier/cashiers_screen.dart';
 import '../cashier/cashier_workspace.dart';
 import '../local_orders/local_orders_screen.dart';
+import '../shared/screen_ui.dart';
 
 class _NavItem {
   final String label;
@@ -33,6 +34,12 @@ class _NavItem {
   final bool adminOnly;
   const _NavItem(this.label, this.icon, this.screen, {this.adminOnly = false});
 }
+
+const _sections = <(String, List<String>)>[
+  ('التشغيل', ['مساحة الكاشير', 'الأجهزة', 'التربيزات', 'المشروبات', 'طلبات البوفيه', 'الشيفت', 'البطولات', 'الشحن']),
+  ('الحسابات', ['لوحة التحكم', 'تقرير اليوم', 'السجل', 'المديونيات', 'المصروفات', 'سجل الشيفتات']),
+  ('إدارة المحل', ['العملاء', 'المخزون', 'أقسام البوفيه', 'حسابات الكاشير', 'الأرشيف', 'سجل التدقيق', 'الإعدادات']),
+];
 
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key, this.onManageLicense});
@@ -80,11 +87,13 @@ class _AppShellState extends ConsumerState<AppShell> {
       _NavItem('الإعدادات', Icons.settings, const SettingsScreen(), adminOnly: true),
     ];
 
-    final visibleItems = items.where((i) => !i.adminOnly || isAdmin).toList();
+    final allowed = {for (final item in items) if (!item.adminOnly || isAdmin) item.label: item};
+    final visibleItems = [for (final section in _sections)
+      for (final label in section.$2) if (allowed.containsKey(label)) allowed[label]!];
     final index = visibleItems.indexWhere((item) => item.label == _selected);
     final selected = index < 0 ? 0 : index;
     final current = visibleItems[selected];
-    final compact = MediaQuery.sizeOf(context).width < 1050;
+    final compact = MediaQuery.sizeOf(context).width < 980;
 
     return SessionAlerts(child: Scaffold(
       backgroundColor: AppColors.background,
@@ -96,7 +105,6 @@ class _AppShellState extends ConsumerState<AppShell> {
             compact: compact,
             onSelect: (i) => setState(() => _selected = visibleItems[i].label),
             shopName: config?.shopName ?? '',
-            session: session,
           ),
           Expanded(
             child: Column(
@@ -105,7 +113,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                 Container(
                   padding: const EdgeInsetsDirectional.fromSTEB(24, 16, 24, 16),
                   decoration: const BoxDecoration(
-                    color: AppColors.sidebar,
+                    color: AppColors.background,
                     border: Border(bottom: BorderSide(color: AppColors.divider)),
                   ),
                   child: Row(
@@ -116,7 +124,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                         child: Text(current.label, style: Theme.of(context).textTheme.titleLarge),
                       ),
                       const SizedBox(width: 12),
-                      Text(isAdmin ? 'مدير المحل' : session.cashierName ?? 'الكاشير'),
+                      if (!compact) Chip(
+                        avatar: Icon(isAdmin ? Icons.admin_panel_settings_outlined : Icons.badge_outlined, size: 16),
+                        label: Text(isAdmin ? 'مدير المحل' : session.cashierName ?? 'الكاشير'),
+                      ),
                       if (isAdmin && widget.onManageLicense != null)
                         IconButton(
                           tooltip: 'الترخيص والتجديد',
@@ -142,7 +153,6 @@ class _Sidebar extends ConsumerWidget {
   final bool compact;
   final ValueChanged<int> onSelect;
   final String shopName;
-  final SessionState session;
 
   const _Sidebar({
     required this.items,
@@ -150,86 +160,91 @@ class _Sidebar extends ConsumerWidget {
     required this.compact,
     required this.onSelect,
     required this.shopName,
-    required this.session,
   });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      width: compact ? 68 : 220,
-      color: AppColors.sidebar,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 24),
-          const Icon(Icons.sports_esports, color: AppColors.accent, size: 32),
-          const SizedBox(height: 8),
-          if (!compact) Text(shopName.isEmpty ? 'PS Management' : shopName,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          if (!compact) Text(
-            session.role == UserRole.admin ? 'أدمن' : (session.cashierName ?? ''),
-            style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: items.length,
-              itemBuilder: (context, i) {
-                final item = items[i];
-                final isSelected = i == selected;
-                return Tooltip(
-                  message: item.label,
-                  child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                  child: Material(
-                    color: isSelected ? AppColors.sidebarSelected : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(10),
-                      onTap: () => onSelect(i),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                        child: Row(
-                          children: [
-                            Icon(item.icon, size: 20, color: isSelected ? AppColors.accent : Colors.white54),
-                            if (!compact) const SizedBox(width: 12),
-                            if (!compact) Expanded(
-                              child: Text(item.label,
-                                  style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontSize: 14)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  ),
-                );
-              },
+      width: compact ? 70 : 232,
+      decoration: const BoxDecoration(
+        color: AppColors.sidebar,
+        border: BorderDirectional(end: BorderSide(color: AppColors.divider)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16, vertical: 17),
+          child: Row(children: [
+            const ScreenIcon(Icons.sports_esports_outlined),
+            if (!compact) ...[
+              const SizedBox(width: 11),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(shopName.isEmpty ? 'PS Management' : shopName,
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                const Text('إدارة المحل • أوفلاين', style: TextStyle(color: AppColors.muted, fontSize: 11)),
+              ])),
+            ],
+          ]),
+        ),
+        const Divider(height: 1),
+        Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(9, 8, 9, 12), children: [
+          for (final section in _sections)
+            if (items.any((item) => section.$2.contains(item.label))) ...[
+              if (!compact) Padding(
+                padding: const EdgeInsets.fromLTRB(11, 12, 11, 5),
+                child: Text(section.$1, style: Theme.of(context).textTheme.bodySmall),
+              ) else const SizedBox(height: 6),
+              for (var i = 0; i < items.length; i++)
+                if (section.$2.contains(items[i].label)) _item(context, items[i], i),
+            ],
+        ])),
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.all(10),
+          child: compact
+              ? IconButton(tooltip: 'تسجيل خروج', icon: const Icon(Icons.logout, color: AppColors.red),
+                  onPressed: () => ref.read(sessionProvider.notifier).logout())
+              : TextButton.icon(icon: const Icon(Icons.logout, color: AppColors.red, size: 18),
+                  label: const Text('تسجيل خروج'),
+                  onPressed: () => ref.read(sessionProvider.notifier).logout()),
+        ),
+      ]),
+    );
+  }
+
+  Widget _item(BuildContext context, _NavItem item, int index) {
+    final active = selected == index;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Tooltip(
+        message: item.label,
+        child: Semantics(
+          selected: active,
+          child: Material(
+            color: active ? AppColors.sidebarSelected : Colors.transparent,
+            borderRadius: BorderRadius.circular(11),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(11),
+              onTap: () => onSelect(index),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 41),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start, children: [
+                    Icon(item.icon, size: 20, color: active ? AppColors.accent : AppColors.muted),
+                    if (!compact) ...[
+                      const SizedBox(width: 11),
+                      Expanded(child: Text(item.label, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: active ? AppColors.ink : AppColors.muted,
+                          fontWeight: active ? FontWeight.w700 : FontWeight.w500))),
+                      if (active) const Icon(Icons.chevron_left, size: 15, color: AppColors.accent),
+                    ],
+                  ]),
+                ),
+              ),
             ),
           ),
-          const Divider(height: 1),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: compact
-                ? IconButton(
-                    tooltip: 'تسجيل خروج',
-                    onPressed: () => ref.read(sessionProvider.notifier).logout(),
-                    icon: const Icon(Icons.logout, color: AppColors.red),
-                  )
-                : TextButton.icon(
-              onPressed: () => ref.read(sessionProvider.notifier).logout(),
-              icon: const Icon(Icons.logout, size: 18, color: AppColors.red),
-              label: const Text('تسجيل خروج', style: TextStyle(color: AppColors.red)),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

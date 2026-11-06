@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -30,14 +32,11 @@ class DebtsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const Text('المديونيات', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const Spacer(),
-                  Text('إجمالي المستحق: ${totalUnpaid.toStringAsFixed(1)} ج',
-                      style: const TextStyle(color: AppColors.red, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 16),
-                  OutlinedButton.icon(
+          ScreenIntro(
+            icon: Icons.account_balance_wallet_outlined, title: 'المديونيات',
+            description: 'إجمالي المستحق: ${totalUnpaid.toStringAsFixed(2)} ج',
+            actions: [
+              OutlinedButton.icon(
                     onPressed: () async {
                       final path = await ExcelExportService.exportDebts(debts);
                       if (context.mounted) {
@@ -49,7 +48,6 @@ class DebtsScreen extends ConsumerWidget {
                     icon: const Icon(Icons.table_chart, size: 18),
                     label: const Text('Excel'),
                   ),
-                  const SizedBox(width: 16),
                   FilledButton.icon(
                     onPressed: () => _showAddDialog(context, ref),
                     icon: const Icon(Icons.add),
@@ -60,7 +58,7 @@ class DebtsScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               Expanded(
                 child: debts.isEmpty
-                    ? const Center(child: Text('مفيش مديونيات مسجلة', style: TextStyle(color: Colors.white38)))
+                    ? const ScreenEmpty(icon: Icons.account_balance_wallet_outlined, title: 'مفيش مديونيات مسجلة', hint: 'اضغط مديونية جديدة عشان تتابع المستحق والدفعات.')
                     : ListView.separated(
                         itemCount: debts.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),

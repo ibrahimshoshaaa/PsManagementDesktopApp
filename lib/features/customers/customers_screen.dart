@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -147,6 +149,11 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          ScreenIntro(
+            icon: Icons.people_outline, title: 'دليل العملاء',
+            description: '${_customers.length} عميل • ابحث بالاسم أو رقم التليفون.',
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -171,7 +178,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
           if (_busy) const LinearProgressIndicator(),
           Expanded(
             child: visible.isEmpty
-                ? Center(child: Text(_busy ? 'جاري تحميل العملاء…' : 'مفيش عملاء ظاهرين'))
+                ? (_busy ? const Center(child: CircularProgressIndicator()) : const ScreenEmpty(icon: Icons.person_search_outlined, title: 'مفيش عملاء مطابقين', hint: 'غيّر كلمة البحث أو أضف عميل جديد.'))
                 : ListView.separated(
                     itemCount: visible.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 4),

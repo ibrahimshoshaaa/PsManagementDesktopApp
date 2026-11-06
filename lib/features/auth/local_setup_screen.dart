@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/utils/password_utils.dart';
 import '../../data/local/database.dart';
 import '../../providers/core_providers.dart';
+import '../shared/screen_ui.dart';
 
 class LocalSetupScreen extends ConsumerStatefulWidget {
   const LocalSetupScreen({super.key});
@@ -52,66 +53,43 @@ class _LocalSetupScreenState extends ConsumerState<LocalSetupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: SizedBox(
-            width: 460,
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(28),
-                child: Form(
-                  key: _form,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const Icon(Icons.sports_esports_outlined, size: 44),
-                      const SizedBox(height: 16),
-                      Text('إعداد المحل لأول مرة', style: Theme.of(context).textTheme.headlineSmall),
-                      const SizedBox(height: 8),
-                      const Text('البيانات هتتحفظ على الكمبيوتر ونسخة ويندوز تشتغل من غير إنترنت.'),
-                      const SizedBox(height: 20),
-                      TextFormField(
-                        controller: _shop,
-                        autofocus: true,
-                        decoration: const InputDecoration(labelText: 'اسم المحل'),
-                        validator: (value) => value == null || value.trim().isEmpty
-                            ? 'اكتب اسم المحل'
-                            : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _password,
-                        obscureText: true,
-                        decoration: const InputDecoration(labelText: 'كلمة سر الأدمن'),
-                        validator: (value) => value == null || value.trim().length < 8
-                            ? 'اكتب كلمة سر من 8 أحرف على الأقل'
-                            : null,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        obscureText: true,
-                        decoration: const InputDecoration(labelText: 'أكد كلمة السر'),
-                        validator: (value) => value != _password.text ? 'كلمتا السر مختلفتان' : null,
-                        onFieldSubmitted: (_) => _save(),
-                      ),
-                      if (_error != null) ...[
-                        const SizedBox(height: 12),
-                        Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                      ],
-                      const SizedBox(height: 20),
-                      FilledButton(
-                        onPressed: _saving ? null : _save,
-                        child: Text(_saving ? 'جاري الحفظ…' : 'حفظ وفتح تسجيل الدخول'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+    return AccessFrame(
+      icon: Icons.storefront_outlined,
+      title: 'إعداد المحل لأول مرة',
+      caption: 'اختار الاسم اللي هيظهر في الفواتير وكلمة سر مدير المحل.',
+      child: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextFormField(
+              controller: _shop, autofocus: true, textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'اسم المحل', prefixIcon: Icon(Icons.storefront_outlined)),
+              validator: (value) => value == null || value.trim().isEmpty ? 'اكتب اسم المحل' : null,
             ),
-          ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _password, obscureText: true, textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(labelText: 'كلمة سر الأدمن', helperText: '٨ حروف على الأقل',
+                prefixIcon: Icon(Icons.lock_outline)),
+              validator: (value) => value == null || value.trim().length < 8
+                  ? 'اكتب كلمة سر من ٨ حروف على الأقل' : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'أكد كلمة السر', prefixIcon: Icon(Icons.lock_outline)),
+              validator: (value) => value != _password.text ? 'كلمتا السر مختلفتان' : null,
+              onFieldSubmitted: (_) => _save(),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+            const SizedBox(height: 20),
+            FilledButton.icon(onPressed: _saving ? null : _save, icon: const Icon(Icons.check),
+              label: Text(_saving ? 'جاري الحفظ…' : 'حفظ وفتح تسجيل الدخول')),
+          ],
         ),
       ),
     );

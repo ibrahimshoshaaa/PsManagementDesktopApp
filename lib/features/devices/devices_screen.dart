@@ -9,6 +9,7 @@ import '../../domain/device_logic.dart';
 import '../../providers/core_providers.dart';
 import 'devices_controller.dart';
 import 'device_session_dialog.dart';
+import '../shared/screen_ui.dart';
 
 class DevicesScreen extends ConsumerStatefulWidget {
   const DevicesScreen({super.key});
@@ -31,9 +32,8 @@ class _DevicesScreenState extends ConsumerState<DevicesScreen> {
       error: (e, _) => Center(child: Text('حصل خطأ: $e', style: const TextStyle(color: Colors.white))),
       data: (devices) {
         if (devices.isEmpty) {
-          return const Center(
-            child: Text('مفيش أجهزة مضافة — أضيفها من الإعدادات', style: TextStyle(color: Colors.white38)),
-          );
+          return const ScreenEmpty(icon: Icons.sports_esports_outlined, title: 'لسه مفيش أجهزة',
+            hint: 'أضف أول جهاز من الإعدادات ← الأجهزة والتربيزات.');
         }
         final available = devices.where((device) => !device.isActive).length;
         final running = devices.where((device) => device.isRunning).length;
@@ -227,6 +227,7 @@ class _DeviceCard extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: IconButton.filledTonal(
+                          tooltip: device.isPaused ? 'استكمال الجلسة' : 'إيقاف مؤقت',
                           onPressed: () =>
                               device.isPaused ? controller.resume(device.deviceId) : controller.pause(device.deviceId),
                           icon: Icon(device.isPaused ? Icons.play_arrow : Icons.pause),
@@ -236,6 +237,7 @@ class _DeviceCard extends ConsumerWidget {
                       Expanded(
                         child: IconButton.filledTonal(
                           style: IconButton.styleFrom(backgroundColor: AppColors.orange.withOpacity(0.2)),
+                          tooltip: 'إضافة طلب بوفيه',
                           onPressed: () => openDeviceSession(context, device, buffet: true),
                           icon: const Icon(Icons.fastfood, color: AppColors.orange),
                         ),
@@ -244,6 +246,7 @@ class _DeviceCard extends ConsumerWidget {
                       Expanded(
                         child: IconButton.filledTonal(
                           style: IconButton.styleFrom(backgroundColor: AppColors.redDark.withOpacity(0.3)),
+                          tooltip: 'عرض الحساب',
                           onPressed: () => openDeviceSession(context, device),
                           icon: const Icon(Icons.receipt_long, color: AppColors.red),
                         ),

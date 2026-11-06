@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show OrderingTerm;
@@ -28,7 +30,7 @@ class ShiftHistoryScreen extends ConsumerWidget {
       final rows = session.role == UserRole.none || (session.role == UserRole.cashier && filter == null)
           ? <ShiftHistoryRow>[] : all.where((row) => filter == null || row.cashierName == filter).toList();
       return rows.isEmpty
-        ? const Center(child: Text('مفيش شيفتات مقفولة لسه'))
+        ? const ScreenEmpty(icon: Icons.work_history_outlined, title: 'مفيش شيفتات مقفولة لسه', hint: 'بعد إغلاق الشيفت، تقدر تراجع فواتيره وتصدّر ملخصه هنا.')
         : ListView.builder(padding: const EdgeInsets.all(24), itemCount: rows.length, itemBuilder: (context, index) {
             final row = rows[index];
             final transactions = (jsonDecode(row.transactionsJson) as List)

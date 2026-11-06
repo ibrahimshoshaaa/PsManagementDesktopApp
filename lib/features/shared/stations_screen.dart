@@ -11,6 +11,7 @@ import '../drink_tables/drink_tables_controller.dart';
 import '../tables/tables_controller.dart';
 import 'buffet_picker.dart';
 import 'operation_dialog.dart';
+import 'screen_ui.dart';
 
 String _money(num value) => '${value.toStringAsFixed(2)} ج';
 Map<String, int> _orders(String raw) => Map<String, int>.from(jsonDecode(raw) as Map);
@@ -28,23 +29,23 @@ class StationsScreen extends ConsumerWidget {
       for (final row in bar) (id: row.tableId, name: row.name, active: _orders(row.ordersJson).isNotEmpty),
     ];
     final active = rows.where((row) => row.active).length;
-    final color = drinks ? AppColors.orange : AppColors.accent;
     return CustomScrollView(slivers: [
       SliverPadding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
         sliver: SliverToBoxAdapter(
-          child: Card(
-            child: ListTile(
-              leading: Icon(drinks ? Icons.local_cafe_outlined : Icons.table_bar, color: color),
-              title: Text(drinks ? 'تربيزات المشروبات' : 'صالة التربيزات'),
-              subtitle: Text(drinks ? 'إدارة الطلبات وحساب المشروبات' : 'جلسات البلياردو والبينج وحساب الوقت أو اللعبة'),
-              trailing: Text('$active مشغولة  •  ${rows.length - active} متاحة'),
-            ),
+          child: ScreenIntro(
+            icon: drinks ? Icons.local_cafe_outlined : Icons.table_bar,
+            title: drinks ? 'تربيزات المشروبات' : 'صالة التربيزات',
+            description: drinks ? 'افتح حساب التربيزة لإضافة الطلبات أو مراجعتها.' : 'شغّل جلسة بالوقت أو سجّل لعبة بسعر ثابت.',
+            actions: [
+              Chip(label: Text('$active مشغولة')),
+              Chip(label: Text('${rows.length - active} متاحة')),
+            ],
           ),
         ),
       ),
       if (rows.isEmpty)
-        const SliverFillRemaining(hasScrollBody: false, child: Center(child: Text('أضف تربيزات من الإعدادات عشان تبدأ')))
+        const SliverFillRemaining(hasScrollBody: false, child: ScreenEmpty(icon: Icons.table_bar, title: 'لسه مفيش تربيزات', hint: 'أضف التربيزات من الإعدادات ← الأجهزة والتربيزات.'))
       else
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),

@@ -74,9 +74,9 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
         continue-on-error: true
 
-      - name: Verify offline licensing and billing
+      - name: Verify offline licensing, billing, and UI
         if: github.head_ref == 'codex/desktop-offline' || github.ref_name == 'codex/desktop-offline'
-        run: flutter test test/license_token_test.dart test/offline_billing_test.dart
+        run: flutter test test/license_token_test.dart test/offline_billing_test.dart test/offline_ui_test.dart
 
       - name: Build Windows release
         env:

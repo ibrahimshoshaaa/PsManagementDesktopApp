@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' show OrderingTerm;
@@ -37,14 +39,11 @@ class ExpensesScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const Text('المصروفات', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const Spacer(),
-                  Text('إجمالي الشهر: ${totalMonth.toStringAsFixed(1)} ج',
-                      style: const TextStyle(color: AppColors.orange, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 16),
-                  OutlinedButton.icon(
+          ScreenIntro(
+            icon: Icons.payments_outlined, title: 'المصروفات',
+            description: 'إجمالي الشهر: ${totalMonth.toStringAsFixed(2)} ج',
+            actions: [
+              OutlinedButton.icon(
                     onPressed: () async {
                       final path = await ExcelExportService.exportExpenses(expenses);
                       if (context.mounted) {
@@ -56,7 +55,6 @@ class ExpensesScreen extends ConsumerWidget {
                     icon: const Icon(Icons.table_chart, size: 18),
                     label: const Text('Excel'),
                   ),
-                  const SizedBox(width: 16),
                   FilledButton.icon(
                     onPressed: () => _edit(context, ref, categoriesAsync.valueOrNull ?? []),
                     icon: const Icon(Icons.add),
@@ -67,7 +65,7 @@ class ExpensesScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               Expanded(
                 child: expenses.isEmpty
-                    ? const Center(child: Text('مفيش مصروفات مسجلة', style: TextStyle(color: Colors.white38)))
+                    ? const ScreenEmpty(icon: Icons.payments_outlined, title: 'مفيش مصروفات مسجلة', hint: 'اضغط مصروف جديد عشان تسجل المبلغ والفئة والتاريخ.')
                     : ListView.separated(
                         itemCount: expenses.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),

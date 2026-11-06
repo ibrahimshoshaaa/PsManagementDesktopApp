@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'screen_ui.dart';
+
 double? parseMoney(String input) {
   const arabic = '٠١٢٣٤٥٦٧٨٩';
   const persian = '۰۱۲۳۴۵۶۷۸۹';
@@ -53,7 +55,11 @@ class _OperationDialogState extends State<_OperationDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text(widget.title),
+    title: Row(children: [
+      const ScreenIcon(Icons.edit_note_outlined),
+      const SizedBox(width: 12),
+      Expanded(child: Text(widget.title)),
+    ]),
     content: SizedBox(width: 500, child: SingleChildScrollView(
       child: Form(key: _form, child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -62,7 +68,7 @@ class _OperationDialogState extends State<_OperationDialog> {
           for (final field in widget.fields)
             Padding(padding: const EdgeInsets.only(bottom: 12), child: field),
           if (_error != null)
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Semantics(liveRegion: true, child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error))),
         ],
       )),
     )),

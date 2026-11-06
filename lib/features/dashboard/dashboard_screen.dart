@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -35,7 +37,7 @@ class DashboardScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('لوحة التحكم', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+            const ScreenIntro(icon: Icons.dashboard_outlined, title: 'ملخص المحل', description: 'المبيعات والجلسات والمصروفات في لمحة واحدة.'),
             const SizedBox(height: 20),
             GridView(
               gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(

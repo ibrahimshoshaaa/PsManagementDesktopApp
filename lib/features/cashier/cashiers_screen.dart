@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,9 +17,10 @@ class CashiersScreen extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Row(
-          children: [
-            Expanded(child: Text('حسابات الكاشير (${cashiers.length})')),
+        ScreenIntro(
+          icon: Icons.manage_accounts_outlined, title: 'حسابات الكاشير',
+          description: '${cashiers.length} حساب • اضغط تعديل لتغيير الاسم أو كلمة السر.',
+          actions: [
             FilledButton.icon(
               onPressed: () => _showAddDialog(context, controller),
               icon: const Icon(Icons.person_add_alt_1),

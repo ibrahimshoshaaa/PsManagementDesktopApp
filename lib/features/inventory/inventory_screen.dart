@@ -1,3 +1,6 @@
+import '../shared/screen_ui.dart';
+import '../../core/theme/app_colors.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -113,7 +116,10 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          Wrap(spacing: 8, runSpacing: 8, children: [
+          ScreenIntro(
+            icon: Icons.inventory_2_outlined, title: 'رصيد البوفيه',
+            description: 'تابع الكميات والمبيعات، أو زوّد الرصيد بتوريد جديد.',
+            actions: [
             FilledButton.icon(
               onPressed: () => showMenuItemDialog(context),
               icon: const Icon(Icons.add_box_outlined),
@@ -136,7 +142,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           const SizedBox(height: 16),
           Expanded(
             child: items.isEmpty
-                ? const Center(child: Text('مفيش أصناف ظاهرة'))
+                ? const ScreenEmpty(icon: Icons.inventory_2_outlined, title: 'مفيش أصناف ظاهرة', hint: 'غيّر كلمة البحث أو أضف صنف وحدد كميته الافتتاحية.')
                 : ListView.builder(
                     itemCount: items.length,
                     itemBuilder: (context, index) {
@@ -144,7 +150,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                       final quantity = stock[item];
                       return Card(
                         child: ListTile(
-                          leading: const Icon(Icons.inventory_2_outlined),
+                          leading: ScreenIcon(Icons.inventory_2_outlined, color: quantity == 0 ? AppColors.red : AppColors.accent),
                           title: Text(item),
                           subtitle: Text('المباع اليوم  ${sold[item] ?? 0}'),
                           trailing: Wrap(

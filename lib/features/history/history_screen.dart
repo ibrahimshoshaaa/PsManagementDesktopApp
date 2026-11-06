@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -50,16 +52,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const Text('السجل', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                  const Spacer(),
-                  OutlinedButton.icon(
+          ScreenIntro(
+            icon: Icons.receipt_long_outlined, title: 'سجل الفواتير',
+            description: 'اضغط على فاتورة عشان تشوف تفاصيلها أو تفتحها للطباعة.',
+            actions: [
+              OutlinedButton.icon(
                     onPressed: () => _exportPdf(context, ref, shopName: ref.read(appConfigProvider).valueOrNull?.shopName ?? '', todayRecords: todayRecords),
                     icon: const Icon(Icons.picture_as_pdf, size: 18),
                     label: const Text('PDF'),
                   ),
-                  const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: () => _exportExcel(context, ref, visible),
                     icon: const Icon(Icons.table_chart, size: 18),
@@ -100,7 +101,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               const SizedBox(height: 12),
               Expanded(
                 child: visible.isEmpty
-                    ? const Center(child: Text('مفيش سجلات لسه', style: TextStyle(color: Colors.white38)))
+                    ? const ScreenEmpty(icon: Icons.receipt_long_outlined, title: 'مفيش سجلات لسه', hint: 'جرّب تغيّر البحث أو التاريخ، أو اقفل جلسة عشان تظهر أول فاتورة.')
                     : ListView.separated(
                         itemCount: visible.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),

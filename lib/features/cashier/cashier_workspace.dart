@@ -8,6 +8,7 @@ import '../drink_tables/drink_tables_screen.dart';
 import '../local_orders/local_orders_screen.dart';
 import '../shifts/shift_screen.dart';
 import '../tables/tables_screen.dart';
+import '../../core/theme/app_colors.dart';
 
 class CashierWorkspace extends ConsumerWidget {
   const CashierWorkspace({super.key});
@@ -28,7 +29,11 @@ class CashierWorkspace extends ConsumerWidget {
       key: ValueKey((games, drinks)),
       length: items.length,
       child: Column(children: [
-        TabBar(isScrollable: true, tabAlignment: TabAlignment.start, tabs: [for (final item in items) item.$1]),
+        Material(
+          color: AppColors.sidebar,
+          child: TabBar(isScrollable: true, tabAlignment: TabAlignment.start,
+            padding: const EdgeInsetsDirectional.only(start: 14), tabs: [for (final item in items) item.$1]),
+        ),
         Expanded(child: TabBarView(children: [for (final item in items) item.$2])),
       ]),
     );

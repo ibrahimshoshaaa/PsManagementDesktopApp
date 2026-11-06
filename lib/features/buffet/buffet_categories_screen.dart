@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,9 +22,10 @@ class BuffetCategoriesScreen extends ConsumerWidget {
       data: (rows) => ListView(
         padding: const EdgeInsets.all(24),
         children: [
-          Row(
-            children: [
-              const Expanded(child: Text('نظّم الأصناف في أقسام المنيو')),
+          ScreenIntro(
+            icon: Icons.category_outlined, title: 'أقسام المنيو',
+            description: 'الأقسام بتظهر للكاشير وقت اختيار أصناف الطلب.',
+            actions: [
               FilledButton.icon(
                 onPressed: () => _edit(context, ref),
                 icon: const Icon(Icons.add),
@@ -31,7 +34,7 @@ class BuffetCategoriesScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 16),
-          if (rows.isEmpty) const Text('مفيش أقسام مضافة'),
+          if (rows.isEmpty) const ScreenEmpty(icon: Icons.category_outlined, title: 'مفيش أقسام', hint: 'أضف قسم زي مشروبات أو سناكس عشان ترتّب الأصناف.'),
           for (final row in rows)
             Card(
               child: ListTile(

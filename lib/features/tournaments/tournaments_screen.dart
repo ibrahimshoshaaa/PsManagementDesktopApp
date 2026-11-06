@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,11 +29,11 @@ class _TournamentsScreenState extends ConsumerState<TournamentsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text('البطولات', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                const Spacer(),
-                FilledButton.icon(
+          ScreenIntro(
+            icon: Icons.emoji_events_outlined, title: 'البطولات',
+            description: 'سجّل اللاعبين، افتح جدول المباريات، واحفظ النتائج.',
+            actions: [
+              FilledButton.icon(
                   onPressed: () => _showCreateDialog(context),
                   icon: const Icon(Icons.add),
                   label: const Text('بطولة جديدة'),
@@ -41,7 +43,7 @@ class _TournamentsScreenState extends ConsumerState<TournamentsScreen> {
             const SizedBox(height: 16),
             Expanded(
               child: tournaments.isEmpty
-                  ? const Center(child: Text('مفيش بطولات لسه', style: TextStyle(color: Colors.white38)))
+                  ? const ScreenEmpty(icon: Icons.emoji_events_outlined, title: 'مفيش بطولات لسه', hint: 'أنشئ بطولة وحدد عدد اللاعبين والاشتراك.')
                   : ListView.builder(
                       itemCount: tournaments.length,
                       itemBuilder: (context, i) {
@@ -53,7 +55,12 @@ class _TournamentsScreenState extends ConsumerState<TournamentsScreen> {
                             subtitle: Text('${t.game} · ${t.status}', style: const TextStyle(color: Colors.white38)),
                             trailing: IconButton(
                               icon: const Icon(Icons.delete_outline, color: AppColors.red),
-                              onPressed: () => ref.read(tournamentsControllerProvider).delete(t.id),
+                              tooltip: 'حذف البطولة',
+                              onPressed: () => showOperationDialog(context,
+                                title: 'حذف بطولة ${t.name}؟', action: 'حذف البطولة',
+                                fields: const [Text('جدول البطولة ونتائجها هيتحذفوا.')],
+                                save: () => ref.read(tournamentsControllerProvider).delete(t.id),
+                              ),
                             ),
                             onTap: () => Navigator.push(
                               context,

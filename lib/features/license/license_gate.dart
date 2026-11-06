@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:file_selector/file_selector.dart';
+import '../shared/screen_ui.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -148,35 +150,20 @@ class _LicenseGateState extends ConsumerState<LicenseGate> with WidgetsBindingOb
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (_expires != null) return widget.builder(_manageLicense);
-    return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: SizedBox(
-            width: 500,
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: _deviceId == null
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(_error ?? 'معرّف الجهاز غير متاح.'),
-                          TextButton(
-                            onPressed: () {
-                              setState(() => _loading = true);
-                              _initialize();
-                            },
-                            child: const Text('إعادة المحاولة'),
-                          ),
-                        ],
-                      )
-                    : _LicenseForm(deviceId: _deviceId!, activate: _activate, initialError: _error),
-              ),
-            ),
-          ),
-        ),
-      ),
+    return AccessFrame(
+      icon: Icons.vpn_key_outlined,
+      title: 'تفعيل PS Management',
+      caption: 'استخدم الترخيص المخصص للجهاز ده عشان تفتح البرنامج.',
+      child: _deviceId == null
+          ? ScreenEmpty(
+              icon: Icons.computer_outlined, title: 'تعذر قراءة معرّف الجهاز',
+              hint: _error ?? 'جرّب قراءة المعرّف مرة تانية.',
+              action: OutlinedButton(onPressed: () {
+                setState(() => _loading = true);
+                _initialize();
+              }, child: const Text('إعادة المحاولة')),
+            )
+          : _LicenseForm(deviceId: _deviceId!, activate: _activate, initialError: _error),
     );
   }
 }
@@ -258,7 +245,7 @@ class _LicenseFormState extends State<_LicenseForm> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('ترخيص PS Management', style: Theme.of(context).textTheme.headlineSmall),
+        if (widget.closeOnSuccess) Text('الترخيص والتجديد', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 10),
         Text(expires == null ? 'ابعت معرّف الجهاز للحصول على كود التفعيل.' : 'الترخيص الحالي ساري لحد $expires'),
         const SizedBox(height: 10),

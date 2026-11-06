@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -23,9 +25,11 @@ class ArchiveScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const Expanded(child: Text('ملخصات الفواتير المحفوظة حسب اليوم')),
+              ScreenIntro(
+                icon: Icons.archive_outlined,
+                title: 'أرشيف الفواتير',
+                description: 'افتح ملخص يوم محفوظ أو اختار يوم جديد للأرشفة.',
+                actions: [
                   FilledButton.icon(
                     onPressed: () => _saveDay(context, ref),
                     icon: const Icon(Icons.archive_outlined),
@@ -36,7 +40,7 @@ class ArchiveScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               Expanded(
                 child: archives.isEmpty
-                    ? const Center(child: Text('مفيش أيام متأرشفة لسه', style: TextStyle(color: Colors.white38)))
+                    ? const ScreenEmpty(icon: Icons.archive_outlined, title: 'لسه مفيش أيام في الأرشيف', hint: 'تقدر تحفظ اليوم من تقرير المبيعات أو تختار يوم من هنا.')
                     : ListView.separated(
                         itemCount: archives.length,
                         separatorBuilder: (_, __) => const Divider(height: 1),

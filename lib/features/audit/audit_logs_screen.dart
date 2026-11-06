@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show OrderingTerm;
@@ -28,12 +30,12 @@ class AuditLogsScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Text('سجل التدقيق', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-              const Spacer(),
+          ScreenIntro(
+            icon: Icons.fact_check_outlined, title: 'سجل التدقيق',
+            description: 'آخر ١٠٠ عملية، مع اسم المستخدم والتوقيت.',
+            actions: [
               IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.white54),
+                tooltip: 'تحديث السجل', icon: const Icon(Icons.refresh),
                 onPressed: () => ref.invalidate(_auditLogsProvider),
               ),
             ],
@@ -44,7 +46,7 @@ class AuditLogsScreen extends ConsumerWidget {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('حصل خطأ: $e', style: const TextStyle(color: Colors.white))),
               data: (logs) => logs.isEmpty
-                  ? const Center(child: Text('مفيش أحداث مسجلة', style: TextStyle(color: Colors.white38)))
+                  ? const ScreenEmpty(icon: Icons.fact_check_outlined, title: 'مفيش أحداث مسجلة', hint: 'إجراءات المستخدمين هتظهر هنا بعد تسجيلها.')
                   : ListView.separated(
                       itemCount: logs.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),

@@ -1,3 +1,5 @@
+import '../shared/screen_ui.dart';
+
 import 'dart:convert';
 
 import 'package:drift/drift.dart' show OrderingTerm, Value;
@@ -56,9 +58,10 @@ class LocalOrdersScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
-          Row(
-            children: [
-              const Expanded(child: Text('الطلب بيتسجل على الحساب وقت إضافته.')),
+          ScreenIntro(
+            icon: Icons.receipt_long_outlined, title: 'طلبات البوفيه',
+            description: 'الطلب بيتسجل على حساب الجهاز أو التربيزة وقت إضافته.',
+            actions: [
               FilledButton.icon(
                 onPressed: targets.isEmpty || menu.isEmpty ? null : () => _add(context, ref, targets),
                 icon: const Icon(Icons.add),
@@ -74,7 +77,7 @@ class LocalOrdersScreen extends ConsumerWidget {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (_, __) => const Center(child: Text('تعذر تحميل الطلبات')),
               data: (rows) => rows.isEmpty
-                  ? const Center(child: Text('مفيش طلبات محلية لسه'))
+                  ? const ScreenEmpty(icon: Icons.receipt_long_outlined, title: 'مفيش طلبات لسه', hint: 'ابدأ طلب جديد واختار مكانه من الأجهزة أو التربيزات.')
                   : ListView.builder(
                       itemCount: rows.length,
                       itemBuilder: (context, index) {
