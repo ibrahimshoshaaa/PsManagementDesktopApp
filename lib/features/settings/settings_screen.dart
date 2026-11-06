@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/core_providers.dart';
 import 'settings_controller.dart';
+import 'menu_item_dialog.dart';
 import '../cashier/cashiers_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -350,17 +351,25 @@ class _MenuTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        _SectionHeader(title: 'أصناف المنيو (${menuItems.length})', onAdd: () => _showAddItemDialog(context, controller, categories)),
+        _SectionHeader(title: 'أصناف المنيو (${menuItems.length})', onAdd: () => showMenuItemDialog(context)),
         ...menuItems.map((m) => ListTile(
               title: Text(m.itemName, style: const TextStyle(color: Colors.white)),
               subtitle: Text(
-                'بيع: ${m.price} ج${m.buyPrice != null ? " · شراء: ${m.buyPrice} ج" : ""}${m.categoryId != null ? " · ${m.categoryId}" : ""}',
-                style: const TextStyle(color: Colors.white38),
+                'بيع: ${m.price} ج${m.buyPrice != null ? " · شراء: ${m.buyPrice} ج" : ""}'
+                ' · ${categories.where((row) => row.id == m.categoryId).firstOrNull?.name ?? 'بدون قسم'}',
               ),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline, color: AppColors.red),
-                onPressed: () => controller.removeMenuItem(m.itemName),
-              ),
+              trailing: Wrap(children: [
+                IconButton(
+                  tooltip: 'تعديل الصنف',
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: () => showMenuItemDialog(context, item: m),
+                ),
+                IconButton(
+                  tooltip: 'حذف الصنف',
+                  icon: const Icon(Icons.delete_outline, color: AppColors.red),
+                  onPressed: () => _confirmRemove(context, controller, m.itemName),
+                ),
+              ]),
             )),
         const SizedBox(height: 24),
         _SectionHeader(title: 'أقسام البوفيه (${categories.length})', onAdd: () => _showAddCategoryDialog(context, controller)),
@@ -372,56 +381,27 @@ class _MenuTab extends ConsumerWidget {
     );
   }
 
-  void _showAddItemDialog(BuildContext context, SettingsController controller, List categories) {
-    final nameController = TextEditingController();
-    final priceController = TextEditingController();
-    final buyPriceController = TextEditingController();
-    String? categoryId = categories.isNotEmpty ? categories.first.id as String : null;
-
-    showDialog(
+  Future<void> _confirmRemove(BuildContext context, SettingsController controller, String name) async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('صنف جديد'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'الاسم')),
-              const SizedBox(height: 12),
-              TextField(controller: priceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'سعر البيع')),
-              const SizedBox(height: 12),
-              TextField(controller: buyPriceController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'سعر الشراء (اختياري)')),
-              if (categories.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: categoryId,
-                  decoration: const InputDecoration(labelText: 'القسم'),
-                  items: categories.map<DropdownMenuItem<String>>((c) => DropdownMenuItem(value: c.id as String, child: Text('${c.emoji} ${c.name}'))).toList(),
-                  onChanged: (v) => setState(() => categoryId = v),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-            FilledButton(
-              onPressed: () {
-                final price = int.tryParse(priceController.text);
-                if (nameController.text.trim().isEmpty || price == null) return;
-                controller.addMenuItem(
-                  name: nameController.text.trim(),
-                  price: price,
-                  categoryId: categoryId,
-                  buyPrice: int.tryParse(buyPriceController.text),
-                );
-                Navigator.pop(context);
-              },
-              child: const Text('إضافة'),
-            ),
-          ],
-        ),
+      builder: (dialog) => AlertDialog(
+        title: Text('حذف $name من المنيو؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog), child: const Text('رجوع')),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('حذف')),
+        ],
       ),
     );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await controller.removeMenuItem(name);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تعذر حذف الصنف. اتأكد إنه مش على حساب جلسة مفتوحة.')),
+        );
+      }
+    }
   }
 
   void _showAddCategoryDialog(BuildContext context, SettingsController controller) {

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -128,19 +130,54 @@ class SettingsController {
 
   // ── منيو ───────────────────────────────────────────────────────────────
 
-  Future<void> addMenuItem({required String name, required int price, String? categoryId, int? buyPrice}) async {
-    await _db.into(_db.menuItems).insert(
-          MenuItemsCompanion.insert(
-            itemName: name,
-            price: price,
-            categoryId: Value(categoryId),
-            buyPrice: Value(buyPrice),
-          ),
+  Future<void> saveMenuItem({
+    required String name,
+    required int price,
+    String? categoryId,
+    int? buyPrice,
+    int? openingStock,
+    bool editing = false,
+  }) => _db.transaction(() async {
+    if (name.trim().isEmpty || price < 0 || (buyPrice ?? 0) < 0 || (openingStock ?? 0) < 0) {
+      throw ArgumentError('Invalid menu item');
+    }
+    final item = MenuItemsCompanion.insert(
+      itemName: name,
+      price: price,
+      categoryId: Value(categoryId),
+      buyPrice: Value(buyPrice),
+    );
+    if (editing) {
+      final current = await (_db.select(_db.menuItems)..where((row) => row.itemName.equals(name)))
+          .getSingleOrNull();
+      if (current != null && current.price != price) await _checkMenuItemNotInUse(name);
+      final changed = await (_db.update(_db.menuItems)..where((row) => row.itemName.equals(name)))
+          .write(item);
+      if (changed == 0) throw StateError('Item removed');
+    } else {
+      await _db.into(_db.menuItems).insert(item);
+      if (openingStock != null) {
+        await _db.into(_db.inventoryItems).insertOnConflictUpdate(
+          InventoryItemsCompanion.insert(itemName: name, quantity: Value(openingStock)),
         );
-  }
+      }
+    }
+  });
 
-  Future<void> removeMenuItem(String name) async {
+  Future<void> removeMenuItem(String name) => _db.transaction(() async {
+    await _checkMenuItemNotInUse(name);
     await (_db.delete(_db.menuItems)..where((t) => t.itemName.equals(name))).go();
+  });
+
+  Future<void> _checkMenuItemNotInUse(String name) async {
+    final orders = [
+      for (final row in await _db.select(_db.devices).get()) row.ordersJson,
+      for (final row in await _db.select(_db.gameTables).get()) row.ordersJson,
+      for (final row in await _db.select(_db.drinkTables).get()) row.ordersJson,
+    ];
+    if (orders.any((json) => (jsonDecode(json) as Map).containsKey(name))) {
+      throw StateError('الصنف موجود على حساب مفتوح. اقفل الحساب قبل تغيير سعره أو حذفه.');
+    }
   }
 
   Future<void> addBuffetCategory({required String id, required String name, required String emoji}) async {
