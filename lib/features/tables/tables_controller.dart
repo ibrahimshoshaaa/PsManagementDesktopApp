@@ -105,6 +105,7 @@ class TablesController {
             buffetCost: Value(buffetCost),
             elapsedSeconds: Value(elapsed),
             ordersJson: Value(jsonEncode(orders)),
+            cashier: Value(ref.read(sessionProvider).cashierName ?? 'أدمن'),
             date: DateTime.now().toString(),
             createdAt: DateTime.now().toIso8601String(),
           ),
@@ -144,6 +145,7 @@ class TablesController {
       'elapsed_seconds': elapsed,
       'orders': orders,
       'date': DateTime.now().toString(),
+      'cashier': ref.read(sessionProvider).cashierName ?? 'أدمن',
     });
     AuditLogService.logTable(action: AuditAction.tableStop, tableName: table.name, extra: '${total.toStringAsFixed(1)} ج');
 

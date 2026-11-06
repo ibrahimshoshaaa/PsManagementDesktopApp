@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:drift/drift.dart';
 import '../local/database.dart';
-import 'package:drift/drift.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // json_mappers — تحويل بين صفوف Drift المحلية وشكل الـ JSON اللي بيتزامن فعليًا
@@ -251,6 +250,7 @@ ExpensesCompanion expenseFromJson(Map<String, dynamic> j) => ExpensesCompanion.i
 
 Map<String, dynamic> historyRecordToJson(HistoryRecordRow h) => {
       'name': h.name,
+      'cashier': h.cashier ?? 'غير محدد',
       'device_type': h.deviceType,
       'is_match': h.isMatch,
       'is_game': h.isGame,
@@ -265,6 +265,7 @@ Map<String, dynamic> historyRecordToJson(HistoryRecordRow h) => {
 HistoryRecordsCompanion historyRecordFromJson(Map<String, dynamic> j, {String? remoteKey}) =>
     HistoryRecordsCompanion.insert(
       remoteKey: Value(remoteKey),
+      cashier: Value(j['cashier']?.toString()),
       name: j['name']?.toString() ?? '',
       deviceType: Value(j['device_type']?.toString()),
       isMatch: Value(j['is_match'] as bool? ?? false),

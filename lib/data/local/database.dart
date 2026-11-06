@@ -234,6 +234,7 @@ class Tournaments extends Table {
 @DataClassName('HistoryRecordRow')
 class HistoryRecords extends Table {
   IntColumn get rowId => integer().autoIncrement()();
+  TextColumn get cashier => text().nullable()();
   TextColumn get remoteKey => text().nullable()(); // مفتاح الـ push في Firebase لو اتزامن
   TextColumn get name => text()();
   TextColumn get deviceType => text().nullable()(); // json: device_type ('drink_table' لتربيزات المشروبات)
@@ -359,7 +360,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -367,7 +368,9 @@ class AppDatabase extends _$AppDatabase {
           await m.createAll();
           await seedDefaults(this);
         },
-        // لما تضيف جدول/عمود جديد لاحقًا: زوّد schemaVersion وضيف onUpgrade هنا.
+        onUpgrade: (m, from, to) async {
+          if (from < 2) await m.addColumn(historyRecords, historyRecords.cashier);
+        },
       );
 
   // ── Streams جاهزة هيتم استخدامها من الـ providers ──

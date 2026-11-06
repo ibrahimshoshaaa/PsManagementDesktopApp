@@ -14,14 +14,13 @@ class AppTheme {
         brightness: Brightness.dark,
         surface: AppColors.background,
       ),
-      fontFamily: 'Cairo', // اختياري: لو ضفت خط عربي في assets، أو سيب الافتراضي
     );
 
     return base.copyWith(
       appBarTheme: const AppBarTheme(
         backgroundColor: AppColors.sidebar,
         elevation: 0,
-        centerTitle: true,
+        centerTitle: false,
       ),
       cardTheme: base.cardTheme.copyWith(
         color: AppColors.card,

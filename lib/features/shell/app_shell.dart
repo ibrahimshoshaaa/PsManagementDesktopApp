@@ -17,6 +17,9 @@ import '../expenses/expenses_screen.dart';
 import '../settings/settings_screen.dart';
 import '../audit/audit_logs_screen.dart';
 import '../archive/archive_screen.dart';
+import '../customers/customers_screen.dart';
+import '../reports/daily_report_screen.dart';
+import '../inventory/inventory_screen.dart';
 
 class _NavItem {
   final String label;
@@ -33,7 +36,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  int _selected = 0;
+  String _selected = 'الأجهزة';
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +50,9 @@ class _AppShellState extends ConsumerState<AppShell> {
       const _NavItem('المشروبات', Icons.local_cafe, DrinkTablesScreen()),
       const _NavItem('الشيفت', Icons.badge, ShiftScreen()),
       _NavItem('لوحة التحكم', Icons.dashboard, const DashboardScreen(), adminOnly: true),
+      const _NavItem('تقرير اليوم', Icons.analytics_outlined, DailyReportScreen(), adminOnly: true),
+      const _NavItem('العملاء', Icons.people_outline, CustomersScreen(), adminOnly: true),
+      const _NavItem('المخزون', Icons.inventory_2_outlined, InventoryScreen(), adminOnly: true),
       _NavItem('السجل', Icons.receipt_long, const HistoryScreen(), adminOnly: true),
       if (config?.matchEnabled ?? true)
         const _NavItem('البطولات', Icons.emoji_events, TournamentsScreen()),
@@ -61,7 +67,10 @@ class _AppShellState extends ConsumerState<AppShell> {
     ];
 
     final visibleItems = items.where((i) => !i.adminOnly || isAdmin).toList();
-    if (_selected >= visibleItems.length) _selected = 0;
+    final index = visibleItems.indexWhere((item) => item.label == _selected);
+    final selected = index < 0 ? 0 : index;
+    final current = visibleItems[selected];
+    final compact = MediaQuery.sizeOf(context).width < 1050;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -69,12 +78,38 @@ class _AppShellState extends ConsumerState<AppShell> {
         children: [
           _Sidebar(
             items: visibleItems,
-            selected: _selected,
-            onSelect: (i) => setState(() => _selected = i),
+            selected: selected,
+            compact: compact,
+            onSelect: (i) => setState(() => _selected = visibleItems[i].label),
             shopName: config?.shopName ?? '',
             session: session,
           ),
-          Expanded(child: visibleItems[_selected].screen),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  padding: const EdgeInsetsDirectional.fromSTEB(24, 16, 24, 16),
+                  decoration: const BoxDecoration(
+                    color: AppColors.sidebar,
+                    border: Border(bottom: BorderSide(color: AppColors.divider)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(current.icon, color: AppColors.accent),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(current.label, style: Theme.of(context).textTheme.titleLarge),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(isAdmin ? 'مدير المحل' : session.cashierName ?? 'الكاشير'),
+                    ],
+                  ),
+                ),
+                Expanded(child: KeyedSubtree(key: ValueKey(current.label), child: current.screen)),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -84,6 +119,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 class _Sidebar extends ConsumerWidget {
   final List<_NavItem> items;
   final int selected;
+  final bool compact;
   final ValueChanged<int> onSelect;
   final String shopName;
   final SessionState session;
@@ -91,6 +127,7 @@ class _Sidebar extends ConsumerWidget {
   const _Sidebar({
     required this.items,
     required this.selected,
+    required this.compact,
     required this.onSelect,
     required this.shopName,
     required this.session,
@@ -99,7 +136,7 @@ class _Sidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      width: 230,
+      width: compact ? 68 : 220,
       color: AppColors.sidebar,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -107,13 +144,13 @@ class _Sidebar extends ConsumerWidget {
           const SizedBox(height: 24),
           const Icon(Icons.sports_esports, color: AppColors.accent, size: 32),
           const SizedBox(height: 8),
-          Text(shopName,
+          if (!compact) Text(shopName.isEmpty ? 'PS Management' : shopName,
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          Text(
+          if (!compact) Text(
             session.role == UserRole.admin ? 'أدمن' : (session.cashierName ?? ''),
             style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 12),
             textAlign: TextAlign.center,
@@ -127,7 +164,9 @@ class _Sidebar extends ConsumerWidget {
               itemBuilder: (context, i) {
                 final item = items[i];
                 final isSelected = i == selected;
-                return Padding(
+                return Tooltip(
+                  message: item.label,
+                  child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                   child: Material(
                     color: isSelected ? AppColors.sidebarSelected : Colors.transparent,
@@ -136,12 +175,12 @@ class _Sidebar extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(10),
                       onTap: () => onSelect(i),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                         child: Row(
                           children: [
                             Icon(item.icon, size: 20, color: isSelected ? AppColors.accent : Colors.white54),
-                            const SizedBox(width: 12),
-                            Expanded(
+                            if (!compact) const SizedBox(width: 12),
+                            if (!compact) Expanded(
                               child: Text(item.label,
                                   style: TextStyle(color: isSelected ? Colors.white : Colors.white54, fontSize: 14)),
                             ),
@@ -150,6 +189,7 @@ class _Sidebar extends ConsumerWidget {
                       ),
                     ),
                   ),
+                  ),
                 );
               },
             ),
@@ -157,7 +197,13 @@ class _Sidebar extends ConsumerWidget {
           const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.all(12),
-            child: TextButton.icon(
+            child: compact
+                ? IconButton(
+                    tooltip: 'تسجيل خروج',
+                    onPressed: () => ref.read(sessionProvider.notifier).logout(),
+                    icon: const Icon(Icons.logout, color: AppColors.red),
+                  )
+                : TextButton.icon(
               onPressed: () => ref.read(sessionProvider.notifier).logout(),
               icon: const Icon(Icons.logout, size: 18, color: AppColors.red),
               label: const Text('تسجيل خروج', style: TextStyle(color: AppColors.red)),

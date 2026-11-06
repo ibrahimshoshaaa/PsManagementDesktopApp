@@ -20,22 +20,73 @@ class DevicesController {
   Future<void> _pushDevice(int deviceId) => ref.read(syncServiceProvider).pushDeviceImmediate(deviceId);
 
   /// تشغيل جهاز فاضي.
-  Future<void> start(int deviceId, {required String mode}) async {
+  Future<void> start(int deviceId, {required String mode, int? minutes}) async {
+    if (minutes != null && minutes <= 0) return;
     final device = await (_db.select(_db.devices)..where((t) => t.deviceId.equals(deviceId))).getSingleOrNull();
-    await (_db.update(_db.devices)..where((t) => t.deviceId.equals(deviceId))).write(
-      DevicesCompanion(
+    if (device == null || device.isActive) return;
+    final updated = await (_db.update(_db.devices)
+          ..where((t) => t.deviceId.equals(deviceId) & t.startTime.isNull()))
+        .write(DevicesCompanion(
         status: const Value('شغال'),
         mode: Value(mode),
         startTime: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
         addedSeconds: const Value(0),
         isPaused: const Value(false),
-        pauseStartTime: const Value.absent(),
-      ),
-    );
+        pauseStartTime: const Value(null),
+        isCountdown: Value(minutes != null),
+        countdownTotalSeconds: Value(minutes == null ? null : minutes * 60),
+        countdownAlertSent: const Value(false),
+        sessionLogJson: const Value('[]'),
+      ));
+    if (updated == 0) return;
     await _pushDevice(deviceId);
-    if (device != null) {
-      AuditLogService.logDevice(action: AuditAction.deviceStart, deviceName: device.displayName, deviceType: device.deviceType);
-    }
+    AuditLogService.logDevice(
+      action: AuditAction.deviceStart,
+      deviceName: device.displayName,
+      deviceType: device.deviceType,
+    );
+  }
+
+  Future<bool> recordMatch(int deviceId, String mode) async {
+    final config = await _db.readConfigOnce();
+    if (!config.matchEnabled) return false;
+    final device = await (_db.select(_db.devices)..where((t) => t.deviceId.equals(deviceId))).getSingleOrNull();
+    if (device == null || device.isActive) return false;
+    final prices = {for (final price in await _db.select(_db.prices).get()) price.priceKey: price.amount};
+    final price = device.copyWith(mode: mode).matchPrice(prices).toDouble();
+    final date = DateTime.now().toIso8601String();
+    final cashier = ref.read(sessionProvider).cashierName ?? 'أدمن';
+    await _db.into(_db.historyRecords).insert(HistoryRecordsCompanion.insert(
+      name: device.displayName,
+      deviceType: Value(device.deviceType),
+      isMatch: const Value(true),
+      total: price,
+      timeCost: Value(price),
+      cashier: Value(cashier),
+      date: date,
+      createdAt: date,
+    ));
+    await ref.read(syncServiceProvider).appendHistoryRecord({
+      'id': deviceId,
+      'name': device.displayName,
+      'device_type': device.deviceType,
+      'play_mode': mode,
+      'duration': '1 ماتش',
+      'elapsed_seconds': 0,
+      'time_cost': price,
+      'buffet_cost': 0.0,
+      'total': price,
+      'orders': <String, int>{},
+      'date': date,
+      'is_match': true,
+      'cashier': cashier,
+    });
+    AuditLogService.logDevice(
+      action: AuditAction.matchRecorded,
+      deviceName: device.displayName,
+      deviceType: device.deviceType,
+    );
+    return true;
   }
 
   Future<void> pause(int deviceId) async {
@@ -88,6 +139,62 @@ class DevicesController {
     if (device != null) {
       AuditLogService.logDevice(action: AuditAction.deviceCancel, deviceName: device.displayName, deviceType: device.deviceType);
     }
+  }
+
+  Future<bool> transferSession(int sourceId, int destinationId) async {
+    if (sourceId == destinationId) return false;
+    final moved = await _db.transaction(() async {
+      final source = await (_db.select(_db.devices)
+            ..where((t) => t.deviceId.equals(sourceId)))
+          .getSingleOrNull();
+      final destination = await (_db.select(_db.devices)
+            ..where((t) => t.deviceId.equals(destinationId)))
+          .getSingleOrNull();
+      if (source == null || destination == null ||
+          !source.isActive || destination.isActive ||
+          source.deviceType != destination.deviceType) {
+        return false;
+      }
+      await (_db.update(_db.devices)..where((t) => t.deviceId.equals(destinationId)))
+          .write(DevicesCompanion(
+        status: const Value('شغال'),
+        mode: Value(source.mode),
+        startTime: Value(source.startTime),
+        addedSeconds: Value(source.addedSeconds),
+        isPaused: Value(source.isPaused),
+        pauseStartTime: Value(source.pauseStartTime),
+        ordersJson: Value(source.ordersJson),
+        timerAlertMinutes: Value(source.timerAlertMinutes),
+        isCountdown: Value(source.isCountdown),
+        countdownTotalSeconds: Value(source.countdownTotalSeconds),
+        countdownAlertSent: Value(source.countdownAlertSent),
+        sessionLogJson: Value(source.sessionLogJson),
+      ));
+      await (_db.update(_db.devices)..where((t) => t.deviceId.equals(sourceId)))
+          .write(const DevicesCompanion(
+        status: Value('متاح'),
+        mode: Value('normal'),
+        startTime: Value(null),
+        addedSeconds: Value(0),
+        isPaused: Value(false),
+        pauseStartTime: Value(null),
+        ordersJson: Value('{}'),
+        timerAlertMinutes: Value(null),
+        isCountdown: Value(false),
+        countdownTotalSeconds: Value(null),
+        countdownAlertSent: Value(false),
+        sessionLogJson: Value('[]'),
+      ));
+      AuditLogService.logDevice(
+        action: AuditAction.deviceTransfer,
+        deviceName: source.displayName,
+        deviceType: source.deviceType,
+        extra: destination.displayName,
+      );
+      return true;
+    });
+    if (moved) await ref.read(syncServiceProvider).pushAllDevicesImmediate();
+    return moved;
   }
 
   Future<void> setTimerAlert(int deviceId, int? minutes) async {
@@ -143,6 +250,7 @@ class DevicesController {
       buffetCost: Value(buffetCost),
       elapsedSeconds: Value(elapsed),
       ordersJson: Value(jsonEncode(orders)),
+      cashier: Value(closedBy),
       date: DateTime.now().toString(),
       createdAt: DateTime.now().toIso8601String(),
     );
@@ -192,6 +300,7 @@ class DevicesController {
       'elapsed_seconds': elapsed,
       'orders': orders,
       'date': DateTime.now().toString(),
+      'cashier': closedBy,
     });
     AuditLogService.logDevice(
       action: AuditAction.deviceStop,

@@ -61,7 +61,7 @@ class _BootGateState extends ConsumerState<_BootGate> {
         if (config.shopId != null) {
           await ref.read(syncServiceProvider).start(config.shopId!);
         }
-        setState(() => _phase = _BootPhase.needsLogin);
+        if (mounted) setState(() => _phase = _BootPhase.needsLogin);
         break;
       case SubscriptionState.needsActivation:
       case SubscriptionState.expired:
@@ -89,6 +89,9 @@ class _BootGateState extends ConsumerState<_BootGate> {
       case _BootPhase.needsLogin:
         return LoginScreen(onLoggedIn: () => setState(() => _phase = _BootPhase.ready));
       case _BootPhase.ready:
+        if (ref.watch(sessionProvider).role == UserRole.none) {
+          return LoginScreen(onLoggedIn: () {});
+        }
         return const AppShell();
     }
   }
