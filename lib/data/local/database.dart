@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'connection.dart';
 import 'seed_data.dart';
@@ -415,6 +417,47 @@ class AppDatabase extends _$AppDatabase {
           }
         },
       );
+
+  /// The caller saves the resulting quantities in the same transaction.
+  Future<Map<String, int>> changeBuffetOrders(String ordersJson, Map<String, int> changes) async {
+    final orders = Map<String, int>.from(jsonDecode(ordersJson) as Map);
+    final additions = changes.entries.where((entry) => entry.value > 0).toList();
+    if (additions.isNotEmpty) {
+      final stock = {for (final row in await select(inventoryItems).get()) row.itemName: row.quantity};
+      final menu = {for (final row in await select(menuItems).get()) row.itemName};
+      final reserved = <String, int>{};
+      if (additions.any((entry) => stock.containsKey(entry.key))) {
+        final openOrders = [
+          for (final row in await select(devices).get()) row.ordersJson,
+          for (final row in await select(gameTables).get()) row.ordersJson,
+          for (final row in await select(drinkTables).get()) row.ordersJson,
+        ];
+        for (final json in openOrders) {
+          final lines = Map<String, int>.from(jsonDecode(json) as Map);
+          for (final entry in lines.entries) {
+            reserved.update(entry.key, (count) => count + entry.value, ifAbsent: () => entry.value);
+          }
+        }
+      }
+      for (final addition in additions) {
+        final name = addition.key;
+        if (!menu.contains(name)) throw StateError('الصنف $name مش موجود في المنيو.');
+        final quantity = stock[name];
+        if (quantity != null && (reserved[name] ?? 0) + addition.value > quantity) {
+          throw StateError('المخزون المتاح من $name أقل من الكمية المطلوبة.');
+        }
+      }
+    }
+    for (final change in changes.entries) {
+      final quantity = (orders[change.key] ?? 0) + change.value;
+      if (quantity > 0) {
+        orders[change.key] = quantity;
+      } else {
+        orders.remove(change.key);
+      }
+    }
+    return orders;
+  }
 
   /// Called inside the same transaction as receipt creation and session reset.
   Future<void> deductSoldItems(Map<String, int> orders) async {

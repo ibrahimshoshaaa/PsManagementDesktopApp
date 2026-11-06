@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +9,7 @@ import '../../providers/core_providers.dart';
 import '../../services/export/excel_export_service.dart';
 import '../../services/export/export_paths.dart';
 import 'debts_controller.dart';
+import '../shared/operation_dialog.dart';
 
 class DebtsScreen extends ConsumerWidget {
   const DebtsScreen({super.key});
@@ -71,119 +74,110 @@ class DebtsScreen extends ConsumerWidget {
     );
   }
 
-  void _showAddDialog(BuildContext context, WidgetRef ref) {
-    final nameController = TextEditingController();
-    final amountController = TextEditingController();
-    final noteController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('مديونية جديدة'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'الاسم')),
-            const SizedBox(height: 12),
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'المبلغ'),
-            ),
-            const SizedBox(height: 12),
-            TextField(controller: noteController, decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () {
-              final amount = double.tryParse(amountController.text);
-              if (nameController.text.trim().isEmpty || amount == null) return;
-              final session = ref.read(sessionProvider);
-              ref.read(debtsControllerProvider).add(
-                    name: nameController.text.trim(),
-                    amount: amount,
-                    createdBy: session.cashierName ?? 'admin',
-                    note: noteController.text.trim().isEmpty ? null : noteController.text.trim(),
-                  );
-              Navigator.pop(context);
-            },
-            child: const Text('حفظ'),
-          ),
-        ],
+  Future<void> _showAddDialog(BuildContext context, WidgetRef ref) {
+    var name = '', amount = '', note = '';
+    return showOperationDialog(
+      context,
+      title: 'تسجيل مديونية جديدة',
+      action: 'حفظ المديونية',
+      fields: [
+        TextFormField(autofocus: true, decoration: const InputDecoration(labelText: 'اسم العميل', prefixIcon: Icon(Icons.person_outline)),
+          onChanged: (value) => name = value.trim(),
+          validator: (value) => value == null || value.trim().isEmpty ? 'اكتب اسم العميل' : null),
+        _amountField('المبلغ المستحق بالجنيه', (value) => amount = value),
+        TextFormField(maxLines: 2, decoration: const InputDecoration(labelText: 'سبب المديونية (اختياري)'),
+          onChanged: (value) => note = value.trim()),
+      ],
+      save: () => ref.read(debtsControllerProvider).add(
+        name: name, amount: parseMoney(amount)!, note: note.isEmpty ? null : note,
+        createdBy: ref.read(sessionProvider).cashierName ?? 'أدمن',
       ),
     );
   }
 }
 
+Widget _amountField(String label, ValueChanged<String> onChanged) => TextFormField(
+  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+  decoration: InputDecoration(labelText: label, prefixIcon: const Icon(Icons.payments_outlined)),
+  validator: (value) => parseMoney(value ?? '') == null ? 'اكتب مبلغًا أكبر من صفر' : null,
+  onChanged: onChanged,
+);
+
 class _DebtTile extends ConsumerWidget {
-  final DebtRow debt;
   const _DebtTile({required this.debt});
+  final DebtRow debt;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.read(sessionProvider);
-    return ListTile(
-      leading: Icon(Icons.person, color: debt.paid ? Colors.white24 : AppColors.red),
-      title: Text(
-        debt.name,
-        style: TextStyle(
-          color: debt.paid ? Colors.white38 : Colors.white,
-          decoration: debt.paid ? TextDecoration.lineThrough : null,
-        ),
-      ),
-      subtitle: Text('${debt.date}${debt.note != null && debt.note!.isNotEmpty ? " · ${debt.note}" : ""}',
-          style: TextStyle(color: Colors.white.withOpacity(0.4))),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('${debt.amount.toStringAsFixed(1)} ج',
-              style: TextStyle(color: debt.paid ? Colors.white38 : Colors.white, fontWeight: FontWeight.bold)),
+    final session = ref.watch(sessionProvider);
+    final controller = ref.read(debtsControllerProvider);
+    final paidBy = session.cashierName ?? 'أدمن';
+    return Card(child: ListTile(
+      leading: Icon(debt.paid ? Icons.check_circle_outline : Icons.person_outline,
+        color: debt.paid ? AppColors.green : AppColors.orange),
+      title: Text(debt.name),
+      subtitle: Text('${debt.paid ? 'تم السداد' : 'متبقي ${debt.amount.toStringAsFixed(2)} ج'} • ${debt.date}'
+          '${debt.note == null || debt.note!.isEmpty ? '' : '\n${debt.note}'}'),
+      onTap: () => _payments(context),
+      trailing: PopupMenuButton<String>(
+        tooltip: 'إجراءات المديونية',
+        onSelected: (action) {
+          if (action == 'history') {
+            _payments(context);
+          } else if (action == 'partial' || action == 'add') {
+            _amount(context, controller, paidBy, adding: action == 'add');
+          } else if (action == 'pay') {
+            showOperationDialog(context, title: 'سداد كامل لـ ${debt.name}؟', action: 'تأكيد السداد',
+              fields: [Text('المستحق: ${debt.amount.toStringAsFixed(2)} ج')],
+              save: () => controller.markPaid(debt.rowId, paidBy: paidBy));
+          } else if (action == 'delete') {
+            showOperationDialog(context, title: 'حذف مديونية ${debt.name}؟', action: 'حذف',
+              fields: const [Text('هيتم حذف المديونية وسجل دفعاتها.')],
+              save: () => controller.delete(debt.rowId));
+          }
+        },
+        itemBuilder: (_) => [
+          const PopupMenuItem(value: 'history', child: Text('سجل الدفعات')),
+          const PopupMenuItem(value: 'add', child: Text('إضافة مبلغ للمديونية')),
           if (!debt.paid) ...[
-            const SizedBox(width: 8),
-            TextButton(
-              onPressed: () => _showPartialDialog(context, ref, session.cashierName ?? 'admin'),
-              child: const Text('سداد جزئي'),
-            ),
-            IconButton(
-              icon: const Icon(Icons.check_circle_outline, color: AppColors.green),
-              onPressed: () => ref.read(debtsControllerProvider).markPaid(debt.rowId, paidBy: session.cashierName ?? 'admin'),
-            ),
+            const PopupMenuItem(value: 'partial', child: Text('سداد جزء')),
+            const PopupMenuItem(value: 'pay', child: Text('سداد كامل')),
           ],
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.red),
-            onPressed: () => ref.read(debtsControllerProvider).delete(debt.rowId),
-          ),
+          if (session.role == UserRole.admin) const PopupMenuItem(value: 'delete', child: Text('حذف')),
         ],
       ),
+    ));
+  }
+
+  Future<void> _amount(BuildContext context, DebtsController controller, String paidBy, {required bool adding}) {
+    var amount = '';
+    return showOperationDialog(
+      context, title: adding ? 'إضافة مبلغ لـ ${debt.name}' : 'سداد جزئي لـ ${debt.name}',
+      action: adding ? 'إضافة' : 'حفظ الدفعة',
+      fields: [
+        Text('المتبقي حاليًا: ${(debt.paid ? 0 : debt.amount).toStringAsFixed(2)} ج'),
+        _amountField(adding ? 'المبلغ الإضافي' : 'المبلغ المدفوع', (value) => amount = value),
+      ],
+      save: () => adding
+          ? controller.addAmount(debt.rowId, parseMoney(amount)!)
+          : controller.addPartialPayment(debt.rowId, parseMoney(amount)!, paidBy: paidBy),
     );
   }
 
-  void _showPartialDialog(BuildContext context, WidgetRef ref, String paidBy) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('سداد جزئي — ${debt.name}'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'المبلغ المدفوع'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () {
-              final amount = double.tryParse(controller.text);
-              if (amount == null || amount <= 0) return;
-              ref.read(debtsControllerProvider).addPartialPayment(debt.rowId, amount, paidBy: paidBy);
-              Navigator.pop(context);
-            },
-            child: const Text('تأكيد'),
+  Future<void> _payments(BuildContext context) {
+    final payments = (jsonDecode(debt.paymentHistoryJson) as List).whereType<Map>().toList().reversed;
+    return showDialog<void>(context: context, builder: (dialog) => AlertDialog(
+      title: Text('دفعات ${debt.name}'),
+      content: SizedBox(width: 460, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
+        children: [
+          if (payments.isEmpty) const Text('مفيش دفعات متسجلة'),
+          for (final payment in payments) ListTile(
+            title: Text('${payment['amount']} ج'),
+            subtitle: Text('${payment['by'] ?? ''} • ${payment['at'] ?? ''}'),
           ),
         ],
-      ),
-    );
+      ))),
+      actions: [TextButton(onPressed: () => Navigator.pop(dialog), child: const Text('رجوع'))],
+    ));
   }
 }

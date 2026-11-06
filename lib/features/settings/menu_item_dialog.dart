@@ -22,7 +22,8 @@ class _MenuItemDialogState extends ConsumerState<_MenuItemDialog> {
   late final _name = TextEditingController(text: widget.item?.itemName);
   late final _sale = TextEditingController(text: widget.item?.price.toString());
   late final _buy = TextEditingController(text: widget.item?.buyPrice?.toString());
-  final _stock = TextEditingController();
+  final _stock = TextEditingController(text: '0');
+  bool _trackStock = true;
   late String? _category = widget.item?.categoryId;
   bool _busy = false;
   String? _error;
@@ -53,7 +54,7 @@ class _MenuItemDialogState extends ConsumerState<_MenuItemDialog> {
         name: name,
         price: int.parse(_sale.text.trim()),
         buyPrice: int.tryParse(_buy.text.trim()),
-        openingStock: int.tryParse(_stock.text.trim()),
+        openingStock: widget.item == null && _trackStock ? int.parse(_stock.text.trim()) : null,
         categoryId: _category,
         editing: widget.item != null,
       );
@@ -119,9 +120,13 @@ class _MenuItemDialogState extends ConsumerState<_MenuItemDialog> {
               ),
               if (!editing) ...[
                 const SizedBox(height: 12),
-                _numeric(_stock, 'الرصيد الافتتاحي (اختياري)'),
-                const SizedBox(height: 6),
-                const Text('سيب الرصيد فاضي لو الصنف مش بيتتابع بالمخزون.', style: TextStyle(color: Colors.white70)),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('تابع كمية الصنف في المخزون'),
+                  value: _trackStock,
+                  onChanged: (value) => setState(() => _trackStock = value),
+                ),
+                if (_trackStock) _numeric(_stock, 'الكمية الافتتاحية', required: true),
               ],
               if (_error != null) ...[
                 const SizedBox(height: 12),

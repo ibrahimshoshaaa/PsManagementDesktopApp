@@ -8,6 +8,8 @@ import '../../core/theme/app_colors.dart';
 import '../../providers/core_providers.dart';
 import 'settings_controller.dart';
 import 'menu_item_dialog.dart';
+import '../shared/operation_dialog.dart';
+import '../../data/local/database.dart';
 import '../cashier/cashiers_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -173,10 +175,11 @@ class _DevicesTablesTab extends ConsumerWidget {
         ...devices.map((d) => ListTile(
               leading: Icon(d.deviceType == 'ps5' ? Icons.videogame_asset : Icons.sports_esports, color: Colors.white54),
               title: Text(d.displayName, style: const TextStyle(color: Colors.white)),
-              subtitle: Text(d.deviceType, style: const TextStyle(color: Colors.white38)),
+              onTap: () => _rename(context, d.displayName, (name) => controller.renameDevice(d.deviceId, name)),
+              subtitle: Text(d.deviceType.toUpperCase(), style: const TextStyle(color: Colors.white38)),
               trailing: IconButton(
                 icon: const Icon(Icons.delete_outline, color: AppColors.red),
-                onPressed: () => controller.removeDevice(d.deviceId),
+                onPressed: () => _confirm(context, d.displayName, () => controller.removeDevice(d.deviceId)),
               ),
             )),
         const SizedBox(height: 24),
@@ -184,10 +187,11 @@ class _DevicesTablesTab extends ConsumerWidget {
         ...tables.map((t) => ListTile(
               leading: const Icon(Icons.table_bar, color: Colors.white54),
               title: Text(t.name, style: const TextStyle(color: Colors.white)),
-              subtitle: Text('${t.tableType} · ${t.rate} ج/ساعة · ${t.gamePrice} ج/لعبة', style: const TextStyle(color: Colors.white38)),
+              onTap: () => _editTable(context, controller, t),
+              subtitle: Text('${t.tableType == 'billiard' ? 'بلياردو' : 'بينج'} · ${t.rate} ج/ساعة · ${t.gamePrice} ج/لعبة', style: const TextStyle(color: Colors.white38)),
               trailing: IconButton(
                 icon: const Icon(Icons.delete_outline, color: AppColors.red),
-                onPressed: () => controller.removeTable(t.tableId),
+                onPressed: () => _confirm(context, t.name, () => controller.removeTable(t.tableId)),
               ),
             )),
         const SizedBox(height: 24),
@@ -198,13 +202,46 @@ class _DevicesTablesTab extends ConsumerWidget {
         ...drinkTables.map((t) => ListTile(
               leading: const Icon(Icons.local_cafe, color: Colors.white54),
               title: Text(t.name, style: const TextStyle(color: Colors.white)),
+              onTap: () => _rename(context, t.name, (name) => controller.renameDrinkTable(t.tableId, name)),
               trailing: IconButton(
                 icon: const Icon(Icons.delete_outline, color: AppColors.red),
-                onPressed: () => controller.removeDrinkTable(t.tableId),
+                onPressed: () => _confirm(context, t.name, () => controller.removeDrinkTable(t.tableId)),
               ),
             )),
       ],
     );
+  }
+
+  Future<void> _confirm(BuildContext context, String name, Future<void> Function() remove) =>
+    showOperationDialog(context, title: 'حذف $name؟', action: 'تأكيد الحذف',
+      fields: const [Text('الفواتير القديمة هتفضل محفوظة في السجل.')], save: remove);
+
+  Future<void> _rename(BuildContext context, String previous, Future<void> Function(String) save) {
+    var name = previous;
+    return showOperationDialog(context, title: 'تعديل الاسم', action: 'حفظ الاسم',
+      fields: [TextFormField(initialValue: previous, autofocus: true,
+        decoration: const InputDecoration(labelText: 'الاسم'),
+        validator: (value) => value == null || value.trim().isEmpty ? 'اكتب الاسم' : null,
+        onChanged: (value) => name = value.trim())],
+      save: () => save(name));
+  }
+
+  Future<void> _editTable(BuildContext context, SettingsController controller, GameTableRow row) {
+    var name = row.name, rate = '${row.rate}', game = '${row.gamePrice}';
+    Widget number(String label, String value, ValueChanged<String> update) => TextFormField(
+      initialValue: value, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: label),
+      validator: (value) {
+        final number = int.tryParse(value?.trim() ?? '');
+        return number == null || number < 0 ? 'اكتب سعرًا صحيحًا' : null;
+      }, onChanged: (value) => update(value.trim()),
+    );
+    return showOperationDialog(context, title: 'تعديل التربيزة', action: 'حفظ التعديلات', fields: [
+      TextFormField(initialValue: name, decoration: const InputDecoration(labelText: 'الاسم'),
+        validator: (value) => value == null || value.trim().isEmpty ? 'اكتب الاسم' : null,
+        onChanged: (value) => name = value.trim()),
+      number('سعر الساعة', rate, (value) => rate = value),
+      number('سعر اللعبة', game, (value) => game = value),
+    ], save: () => controller.updateGameTable(row.tableId, name: name, rate: int.parse(rate), gamePrice: int.parse(game)));
   }
 
   void _showAddDeviceDialog(BuildContext context, SettingsController controller) {
@@ -307,6 +344,21 @@ class _DevicesTablesTab extends ConsumerWidget {
 
 class _PricesTab extends ConsumerWidget {
   const _PricesTab();
+  String _priceLabel(String key) => switch (key) {
+    'ps4_normal' => 'PS4 • ساعة عادي',
+    'ps4_multi' => 'PS4 • ساعة مالتي',
+    'ps5_normal' => 'PS5 • ساعة عادي',
+    'ps5_multi' => 'PS5 • ساعة مالتي',
+    'match_ps4_normal' => 'PS4 • ماتش عادي',
+    'match_ps4_multi' => 'PS4 • ماتش مالتي',
+    'match_ps5_normal' => 'PS5 • ماتش عادي',
+    'match_ps5_multi' => 'PS5 • ماتش مالتي',
+    'ping_normal' => 'بينج • ساعة',
+    'billiard_normal' => 'بلياردو • ساعة',
+    'billiard_american' => 'بلياردو أمريكي • ساعة',
+    _ => key,
+  };
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final prices = ref.watch(pricesStreamProvider).valueOrNull ?? [];
@@ -316,7 +368,7 @@ class _PricesTab extends ConsumerWidget {
       padding: const EdgeInsets.all(20),
       children: prices
           .map((p) => ListTile(
-                title: Text(p.priceKey, style: const TextStyle(color: Colors.white)),
+                title: Text(_priceLabel(p.priceKey), style: const TextStyle(color: Colors.white)),
                 trailing: SizedBox(
                   width: 100,
                   child: TextFormField(
@@ -326,7 +378,7 @@ class _PricesTab extends ConsumerWidget {
                     decoration: const InputDecoration(suffixText: 'ج'),
                     onFieldSubmitted: (v) {
                       final amount = int.tryParse(v);
-                      if (amount != null) controller.setPrice(p.priceKey, amount);
+                      if (amount != null && amount >= 0) controller.setPrice(p.priceKey, amount);
                     },
                   ),
                 ),

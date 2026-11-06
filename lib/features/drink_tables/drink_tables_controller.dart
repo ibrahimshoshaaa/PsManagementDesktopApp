@@ -13,18 +13,27 @@ class DrinkTablesController {
 
   AppDatabase get _db => ref.read(databaseProvider);
 
-  Future<void> addOrder(int tableId, String itemName, int deltaQty) async {
-    final table = await (_db.select(_db.drinkTables)..where((t) => t.tableId.equals(tableId))).getSingle();
-    final orders = Map<String, int>.from(jsonDecode(table.ordersJson) as Map);
-    final newQty = (orders[itemName] ?? 0) + deltaQty;
-    if (newQty <= 0) {
-      orders.remove(itemName);
-    } else {
-      orders[itemName] = newQty;
-    }
-    await (_db.update(_db.drinkTables)..where((t) => t.tableId.equals(tableId)))
+  Future<void> addOrder(int tableId, String itemName, int deltaQty) =>
+      addOrders(tableId, {itemName: deltaQty});
+
+  Future<void> addOrders(int tableId, Map<String, int> changes) => _db.transaction(() async {
+    final table = await (_db.select(_db.drinkTables)..where((row) => row.tableId.equals(tableId))).getSingle();
+    final orders = await _db.changeBuffetOrders(table.ordersJson, changes);
+    await (_db.update(_db.drinkTables)..where((row) => row.tableId.equals(tableId)))
         .write(DrinkTablesCompanion(ordersJson: Value(jsonEncode(orders))));
-  }
+  });
+
+  Future<bool> transfer(int sourceId, int destinationId) => _db.transaction(() async {
+    if (sourceId == destinationId) return false;
+    final source = await (_db.select(_db.drinkTables)..where((row) => row.tableId.equals(sourceId))).getSingleOrNull();
+    final destination = await (_db.select(_db.drinkTables)..where((row) => row.tableId.equals(destinationId))).getSingleOrNull();
+    if (source == null || destination == null || source.ordersJson == '{}' || destination.ordersJson != '{}') return false;
+    await (_db.update(_db.drinkTables)..where((row) => row.tableId.equals(destinationId)))
+        .write(DrinkTablesCompanion(ordersJson: Value(source.ordersJson)));
+    await (_db.update(_db.drinkTables)..where((row) => row.tableId.equals(sourceId)))
+        .write(const DrinkTablesCompanion(ordersJson: Value('{}')));
+    return true;
+  });
 
   /// حساب الفاتورة وتصفير الأوردرات — تربيزات المشروبات مالهاش وقت، بس أوردرات.
   Future<double?> checkout(int tableId) => _db.transaction(() async {

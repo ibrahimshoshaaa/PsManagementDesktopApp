@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/local/database.dart';
 import '../../providers/core_providers.dart';
 import '../settings/settings_controller.dart';
+import '../shared/operation_dialog.dart';
+import '../settings/menu_item_dialog.dart';
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -54,9 +56,37 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     await ref.read(settingsControllerProvider).setInventoryQuantity(item, result);
   }
 
+  Future<void> _receive(List<MenuItemRow> items) {
+    final quantities = <String, String>{};
+    return showOperationDialog(context,
+      title: 'توريد كميات للمخزون',
+      action: 'إضافة الكميات',
+      fields: [
+        const Text('اكتب الكمية الجديدة لكل صنف. هتتضاف فوق الرصيد الحالي.'),
+        for (final item in items)
+          TextFormField(
+            decoration: InputDecoration(labelText: item.itemName, suffixText: 'قطعة'),
+            keyboardType: TextInputType.number,
+            onChanged: (value) => quantities[item.itemName] = value.trim(),
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) return null;
+              final number = int.tryParse(value.trim());
+              return number == null || number <= 0 ? 'اكتب كمية أكبر من صفر' : null;
+            },
+          ),
+      ],
+      save: () {
+        final additions = {for (final entry in quantities.entries)
+          if (entry.value.isNotEmpty) entry.key: int.parse(entry.value)};
+        if (additions.isEmpty) throw StateError('اكتب كمية لصنف واحد على الأقل.');
+        return ref.read(settingsControllerProvider).receiveStock(additions);
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final menu = ref.watch(menuItemsStreamProvider).valueOrNull ?? [];
+    final menu = ref.watch(menuItemsStreamProvider).valueOrNull ?? <MenuItemRow>[];
     final stock = {
       for (final row in ref.watch(inventoryStreamProvider).valueOrNull ?? <InventoryItemRow>[])
         row.itemName: row.quantity,
@@ -83,6 +113,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       padding: const EdgeInsets.all(24),
       child: Column(
         children: [
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            FilledButton.icon(
+              onPressed: () => showMenuItemDialog(context),
+              icon: const Icon(Icons.add_box_outlined),
+              label: const Text('صنف جديد مع رصيد'),
+            ),
+            OutlinedButton.icon(
+              onPressed: menu.isEmpty ? null : () => _receive(menu),
+              icon: const Icon(Icons.inventory_2_outlined),
+              label: const Text('توريد كميات'),
+            ),
+          ]),
+          const SizedBox(height: 12),
           TextField(
             decoration: const InputDecoration(
               labelText: 'ابحث عن صنف',

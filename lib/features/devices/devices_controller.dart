@@ -217,24 +217,7 @@ class DevicesController {
         (expectedStartTime != null && device.startTime != expectedStartTime)) {
       throw StateError('Session changed');
     }
-    final orders = Map<String, int>.from(jsonDecode(device.ordersJson) as Map);
-    for (final change in changes.entries) {
-      final item = change.key;
-      final next = (orders[item] ?? 0) + change.value;
-      if (change.value > 0) {
-        final menuItem = await (_db.select(_db.menuItems)..where((row) => row.itemName.equals(item))).getSingleOrNull();
-        if (menuItem == null) throw StateError('الصنف $item مش موجود في المنيو');
-        final stock = await (_db.select(_db.inventoryItems)..where((row) => row.itemName.equals(item))).getSingleOrNull();
-        if (stock != null && next > stock.quantity) {
-          throw StateError('المتاح من $item هو ${stock.quantity} فقط');
-        }
-      }
-      if (next > 0) {
-        orders[item] = next;
-      } else {
-        orders.remove(item);
-      }
-    }
+    final orders = await _db.changeBuffetOrders(device.ordersJson, changes);
     await _write(deviceId, DevicesCompanion(
       ordersJson: Value(jsonEncode(orders)),
       sessionLogJson: Value(_log(device, 'تعديل طلب البوفيه')),

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
@@ -81,6 +82,39 @@ class PdfExportService {
     );
 
     return _save(doc, timestampedFileName('daily_report', 'pdf'));
+  }
+
+  static Future<String> exportInvoice({
+    required String shopName,
+    required HistoryRecordRow record,
+    String? customerName,
+  }) async {
+    final doc = pw.Document(theme: await _arabicTheme());
+    final orders = Map<String, dynamic>.from(jsonDecode(record.ordersJson) as Map);
+    doc.addPage(pw.MultiPage(
+      textDirection: pw.TextDirection.rtl,
+      pageFormat: PdfPageFormat.a5,
+      build: (_) => [
+        pw.Text(shopName, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+        pw.Text('فاتورة رقم ${record.rowId} • ${record.name}'),
+        pw.Text(record.date),
+        if (record.cashier != null) pw.Text('الكاشير: ${record.cashier}'),
+        if (customerName != null) pw.Text('العميل: $customerName'),
+        pw.SizedBox(height: 12),
+        if (orders.isNotEmpty) pw.TableHelper.fromTextArray(
+          headerDirection: pw.TextDirection.rtl,
+          headers: ['الصنف', 'الكمية'],
+          data: [for (final item in orders.entries) [item.key, item.value.toString()]],
+        ),
+        pw.SizedBox(height: 12),
+        pw.Text('اللعب: ${record.timeCost.toStringAsFixed(2)} ج'),
+        pw.Text('البوفيه: ${record.buffetCost.toStringAsFixed(2)} ج'),
+        pw.Divider(),
+        pw.Text('الإجمالي: ${record.total.toStringAsFixed(2)} ج',
+          style: pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold)),
+      ],
+    ));
+    return _save(doc, timestampedFileName('invoice_${record.rowId}', 'pdf'));
   }
 
   static Future<String> exportShiftReport({

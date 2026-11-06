@@ -9,6 +9,7 @@ import '../../providers/core_providers.dart';
 import '../devices/devices_controller.dart';
 import '../drink_tables/drink_tables_controller.dart';
 import '../tables/tables_controller.dart';
+import '../shared/buffet_picker.dart';
 
 enum _TargetType { device, table, drinks }
 
@@ -56,7 +57,7 @@ class LocalOrdersScreen extends ConsumerWidget {
             children: [
               const Expanded(child: Text('الطلب بيتسجل على الحساب وقت إضافته.')),
               FilledButton.icon(
-                onPressed: targets.isEmpty || menu.isEmpty ? null : () => _add(context, ref, targets, menu),
+                onPressed: targets.isEmpty || menu.isEmpty ? null : () => _add(context, ref, targets),
                 icon: const Icon(Icons.add),
                 label: const Text('طلب جديد'),
               ),
@@ -103,13 +104,17 @@ class LocalOrdersScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _add(BuildContext context, WidgetRef ref, List<_Target> targets, List<MenuItemRow> menu) async {
-    final selection = await showDialog<(_Target, Map<String, int>)>(
-      context: context,
-      builder: (_) => _OrderDialog(targets: targets, menu: menu),
-    );
-    if (selection == null || !context.mounted) return;
-    final (target, items) = selection;
+  Future<void> _add(BuildContext context, WidgetRef ref, List<_Target> targets) async {
+    final target = await showDialog<_Target>(context: context, builder: (dialog) => SimpleDialog(
+      title: const Text('اختار الجهاز أو التربيزة'),
+      children: [
+        for (final row in targets)
+          SimpleDialogOption(onPressed: () => Navigator.pop(dialog, row), child: Text(row.name)),
+      ],
+    ));
+    if (target == null || !context.mounted) return;
+    final items = await showBuffetPicker(context, target: target.name);
+    if (items == null || !context.mounted) return;
     final db = ref.read(databaseProvider);
     final devices = ref.read(devicesControllerProvider);
     final tables = ref.read(tablesControllerProvider);
@@ -126,15 +131,13 @@ class LocalOrdersScreen extends ConsumerWidget {
           case _TargetType.drinks:
             await (db.select(db.drinkTables)..where((t) => t.tableId.equals(target.id))).getSingle();
         }
-        for (final item in items.entries) {
-          switch (target.type) {
-            case _TargetType.device:
-              await devices.addOrder(target.id, item.key, item.value);
-            case _TargetType.table:
-              await tables.addOrder(target.id, item.key, item.value);
-            case _TargetType.drinks:
-              await drinks.addOrder(target.id, item.key, item.value);
-          }
+        switch (target.type) {
+          case _TargetType.device:
+            await devices.addOrders(target.id, items);
+          case _TargetType.table:
+            await tables.addOrders(target.id, items);
+          case _TargetType.drinks:
+            await drinks.addOrders(target.id, items);
         }
         await db.into(db.customerOrders).insert(CustomerOrdersCompanion.insert(
           dataJson: jsonEncode({
@@ -145,10 +148,10 @@ class LocalOrdersScreen extends ConsumerWidget {
           }),
         ));
       });
-    } catch (_) {
+    } catch (error) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تعذر تسجيل الطلب. تأكد إن الجلسة لسه مفتوحة.')),
+          SnackBar(content: Text(error is StateError ? error.message.toString() : 'تعذر تسجيل الطلب. تأكد إن الجلسة لسه مفتوحة.')),
         );
       }
     }
@@ -168,88 +171,5 @@ class LocalOrdersScreen extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر تحديث حالة التسليم')));
       }
     }
-  }
-}
-
-class _OrderDialog extends StatefulWidget {
-  const _OrderDialog({required this.targets, required this.menu});
-
-  final List<_Target> targets;
-  final List<MenuItemRow> menu;
-
-  @override
-  State<_OrderDialog> createState() => _OrderDialogState();
-}
-
-class _OrderDialogState extends State<_OrderDialog> {
-  late _Target _target = widget.targets.first;
-  final _items = <String, int>{};
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('طلب بوفيه جديد'),
-      content: SizedBox(
-        width: 480,
-        height: 380,
-        child: Column(
-          children: [
-            DropdownButtonFormField<_Target>(
-              value: _target,
-              isExpanded: true,
-              decoration: const InputDecoration(labelText: 'الجهاز أو التربيزة'),
-              items: [
-                for (final target in widget.targets)
-                  DropdownMenuItem(value: target, child: Text(target.name, overflow: TextOverflow.ellipsis)),
-              ],
-              onChanged: (value) { if (value != null) setState(() => _target = value); },
-            ),
-            const SizedBox(height: 8),
-            Expanded(
-              child: ListView.builder(
-                itemCount: widget.menu.length,
-                itemBuilder: (context, index) {
-                  final item = widget.menu[index];
-                  final count = _items[item.itemName] ?? 0;
-                  return ListTile(
-                    title: Text(item.itemName),
-                    subtitle: Text('${item.price} ج'),
-                    trailing: Wrap(
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        IconButton(
-                          tooltip: 'تقليل الكمية',
-                          onPressed: count == 0 ? null : () => setState(() {
-                            if (count == 1) {
-                              _items.remove(item.itemName);
-                            } else {
-                              _items[item.itemName] = count - 1;
-                            }
-                          }),
-                          icon: const Icon(Icons.remove),
-                        ),
-                        Text('$count'),
-                        IconButton(
-                          tooltip: 'زيادة الكمية',
-                          onPressed: () => setState(() => _items[item.itemName] = count + 1),
-                          icon: const Icon(Icons.add),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-        FilledButton(
-          onPressed: _items.isEmpty ? null : () => Navigator.pop(context, (_target, Map<String, int>.of(_items))),
-          child: const Text('تسجيل الطلب وإضافته للحساب'),
-        ),
-      ],
-    );
   }
 }

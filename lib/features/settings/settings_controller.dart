@@ -31,7 +31,9 @@ class SettingsController {
 
   Future<void> removeDevice(int deviceId) async {
     final device = await (_db.select(_db.devices)..where((t) => t.deviceId.equals(deviceId))).getSingleOrNull();
-    await (_db.delete(_db.devices)..where((t) => t.deviceId.equals(deviceId))).go();
+    final removed = await (_db.delete(_db.devices)
+          ..where((t) => t.deviceId.equals(deviceId) & t.startTime.isNull() & t.ordersJson.equals('{}'))).go();
+    if (removed == 0 && device != null) throw StateError('اقفل الجلسة المفتوحة قبل حذف الجهاز.');
     final remaining = await _db.select(_db.devices).get();
     await (_db.update(_db.appConfig)..where((t) => t.id.equals(0)))
         .write(AppConfigCompanion(numDevices: Value(remaining.length)));
@@ -62,7 +64,9 @@ class SettingsController {
 
   Future<void> removeTable(int tableId) async {
     final table = await (_db.select(_db.gameTables)..where((t) => t.tableId.equals(tableId))).getSingleOrNull();
-    await (_db.delete(_db.gameTables)..where((t) => t.tableId.equals(tableId))).go();
+    final removed = await (_db.delete(_db.gameTables)
+          ..where((t) => t.tableId.equals(tableId) & t.startTime.isNull() & t.ordersJson.equals('{}'))).go();
+    if (removed == 0 && table != null) throw StateError('اقفل حساب التربيزة قبل حذفها.');
     if (table != null) AuditLogService.logTable(action: AuditAction.tableRemoved, tableName: table.name);
   }
 
@@ -77,13 +81,28 @@ class SettingsController {
 
   Future<void> removeDrinkTable(int tableId) async {
     final table = await (_db.select(_db.drinkTables)..where((t) => t.tableId.equals(tableId))).getSingleOrNull();
-    await (_db.delete(_db.drinkTables)..where((t) => t.tableId.equals(tableId))).go();
+    final removed = await (_db.delete(_db.drinkTables)
+          ..where((t) => t.tableId.equals(tableId) & t.ordersJson.equals('{}'))).go();
+    if (removed == 0 && table != null) throw StateError('اقفل حساب التربيزة قبل حذفها.');
     if (table != null) AuditLogService.logTable(action: AuditAction.drinkTableRemoved, tableName: table.name);
   }
 
   // ── أسعار ──────────────────────────────────────────────────────────────
 
+  Future<void> updateGameTable(int id, {required String name, required int rate, required int gamePrice}) async {
+    final count = await (_db.update(_db.gameTables)
+          ..where((row) => row.tableId.equals(id) & row.startTime.isNull()))
+        .write(GameTablesCompanion(name: Value(name), rate: Value(rate), gamePrice: Value(gamePrice)));
+    if (count == 0) throw StateError('اقفل جلسة التربيزة قبل تعديل بياناتها.');
+  }
+
+  Future<void> renameDrinkTable(int id, String name) async {
+    await (_db.update(_db.drinkTables)..where((row) => row.tableId.equals(id)))
+        .write(DrinkTablesCompanion(name: Value(name)));
+  }
+
   Future<void> setPrice(String key, int amount) async {
+    if (amount < 0) throw StateError('السعر مينفعش يكون بالسالب.');
     await _db.into(_db.prices).insertOnConflictUpdate(PricesCompanion.insert(priceKey: key, amount: amount));
     AuditLogService.log(action: AuditAction.pricesUpdated, actionDetails: 'عدّل سعر "$key" إلى $amount ج');
   }
@@ -194,6 +213,16 @@ class SettingsController {
           InventoryItemsCompanion.insert(itemName: itemName, quantity: Value(quantity)),
         );
   }
+
+  Future<void> receiveStock(Map<String, int> additions) => _db.transaction(() async {
+    for (final entry in additions.entries) {
+      if (entry.value <= 0) throw StateError('اكتب كميات أكبر من صفر.');
+      final item = await (_db.select(_db.menuItems)..where((row) => row.itemName.equals(entry.key))).getSingleOrNull();
+      if (item == null) throw StateError('الصنف ${entry.key} مش موجود في المنيو.');
+      final stock = await (_db.select(_db.inventoryItems)..where((row) => row.itemName.equals(entry.key))).getSingleOrNull();
+      await setInventoryQuantity(entry.key, (stock?.quantity ?? 0) + entry.value);
+    }
+  });
 
   // ── عام ────────────────────────────────────────────────────────────────
 

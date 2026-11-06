@@ -9,6 +9,7 @@ import '../dashboard/dashboard_screen.dart';
 import '../tables/tables_screen.dart';
 import '../drink_tables/drink_tables_screen.dart';
 import '../shifts/shift_screen.dart';
+import '../shifts/shift_history_screen.dart';
 import '../recharge/recharge_screen.dart';
 import '../tournaments/tournaments_screen.dart';
 import '../history/history_screen.dart';
@@ -57,6 +58,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       const _NavItem('التربيزات', Icons.table_bar, TablesScreen()),
       const _NavItem('المشروبات', Icons.local_cafe, DrinkTablesScreen()),
       const _NavItem('الشيفت', Icons.badge, ShiftScreen()),
+      const _NavItem('سجل الشيفتات', Icons.work_history_outlined, ShiftHistoryScreen(), adminOnly: true),
       const _NavItem('طلبات البوفيه', Icons.receipt_outlined, LocalOrdersScreen()),
       _NavItem('لوحة التحكم', Icons.dashboard, const DashboardScreen(), adminOnly: true),
       const _NavItem('تقرير اليوم', Icons.analytics_outlined, DailyReportScreen(), adminOnly: true),

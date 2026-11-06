@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:psapp_flutter/data/local/database.dart';
 import 'package:psapp_flutter/features/devices/devices_controller.dart';
+import 'package:psapp_flutter/features/debts/debts_controller.dart';
+import 'package:psapp_flutter/features/tournaments/tournaments_controller.dart';
 import 'package:psapp_flutter/features/drink_tables/drink_tables_controller.dart';
 import 'package:psapp_flutter/features/shifts/shifts_controller.dart';
 import 'package:psapp_flutter/features/tables/tables_controller.dart';
@@ -111,6 +115,59 @@ void main() {
     expect(await controller.checkout(0), isNull);
     expect((await db.select(db.inventoryItems).getSingle()).quantity, 4);
     expect((await db.select(db.historyRecords).get()).length, 1);
+  });
+
+  test('open accounts share available stock, and moving a table preserves the account', () async {
+    for (var i = 0; i < 2; i++) {
+      await db.into(db.gameTables).insert(GameTablesCompanion.insert(
+        tableId: Value(i), name: 'Table $i', rate: const Value(60),
+      ));
+    }
+    await db.into(db.drinkTables).insert(DrinkTablesCompanion.insert(
+      tableId: const Value(0), name: 'Drinks',
+    ));
+    final tables = container.read(tablesControllerProvider);
+    final drinks = container.read(drinkTablesControllerProvider);
+    await tables.start(0);
+    await tables.addOrders(0, {'Tea': 4});
+    await expectLater(drinks.addOrders(0, {'Tea': 2}), throwsStateError);
+    expect(await tables.transfer(0, 1), isTrue);
+    final rows = await db.select(db.gameTables).get();
+    expect(rows.singleWhere((row) => row.tableId == 0).startTime, isNull);
+    expect(rows.singleWhere((row) => row.tableId == 1).ordersJson, '{"Tea":4}');
+    await drinks.addOrders(0, {'Tea': 1});
+    await drinks.checkout(0);
+    expect((await db.select(db.inventoryItems).getSingle()).quantity, 4);
+  });
+
+  test('debt rejects overpayment and records the actual full payment', () async {
+    final controller = container.read(debtsControllerProvider);
+    await controller.add(name: 'Customer', amount: 100, createdBy: 'Cashier');
+    final id = (await db.select(db.debts).getSingle()).rowId;
+    await expectLater(controller.addPartialPayment(id, 101, paidBy: 'Cashier'), throwsStateError);
+    await controller.addPartialPayment(id, 25, paidBy: 'Cashier');
+    await controller.markPaid(id, paidBy: 'Cashier');
+    final row = await db.select(db.debts).getSingle();
+    expect(row.paid, isTrue);
+    expect(row.amount, 0);
+    expect((jsonDecode(row.paymentHistoryJson) as List).map((item) => item['amount']), [25, 75]);
+  });
+
+  test('five-player tournament creates three real byes and advances the scored winner', () async {
+    final controller = container.read(tournamentsControllerProvider);
+    await controller.create(name: 'Cup', game: 'eFootball');
+    final id = (await db.select(db.tournaments).getSingle()).id;
+    for (var i = 0; i < 5; i++) {
+      await controller.addPlayer(id, 'Player $i');
+    }
+    await controller.startTournament(id);
+    var row = await db.select(db.tournaments).getSingle();
+    final matches = (jsonDecode(row.roundsJson) as List).first as List;
+    expect(matches.where((match) => match['is_bye'] == true).length, 3);
+    expect(matches.every((match) => match['player1']['id'] != null), isTrue);
+    await controller.setMatchScore(id, 0, 3, 2, 1);
+    row = await db.select(db.tournaments).getSingle();
+    expect(row.currentRound, 1);
   });
 
   test('shift totals include only receipts from that cashier', () async {
