@@ -3,8 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/local/database.dart';
-import '../../data/remote/audit_log_service.dart';
-import '../../data/remote/firebase_service.dart';
+import '../../data/local/audit_log_service.dart';
 import '../../providers/core_providers.dart';
 
 final shiftsControllerProvider = Provider<ShiftsController>((ref) => ShiftsController(ref));
@@ -21,20 +20,7 @@ class ShiftsController {
 
   AppDatabase get _db => ref.read(databaseProvider);
 
-  /// يبدأ شيفت للكاشير الحالي — بيتأكد الأول إن مفيش شيفت مفتوح لنفس الاسم
-  /// على جهاز تاني (زي isShiftLockedByOther في الموبايل).
   Future<ShiftOpenResult> startShift(String cashierName) async {
-    final shopId = FirebaseService.currentShopId;
-    if (shopId != null) {
-      final remote = await FirebaseService.getAllOpenShifts(shopId);
-      if (remote.containsKey(cashierName)) {
-        return ShiftOpenResult(
-          success: false,
-          lockedByOtherDeviceMessage: 'الكاشير $cashierName عنده شيفت مفتوح بالفعل على جهاز تاني',
-        );
-      }
-    }
-
     final existing = await (_db.select(_db.openShifts)..where((t) => t.cashierName.equals(cashierName))).getSingleOrNull();
     if (existing != null) {
       // شيفت مفتوح محليًا بالفعل — كمّل عادي (استئناف بعد إعادة تشغيل التطبيق مثلًا)
@@ -48,7 +34,6 @@ class ShiftsController {
             isLocal: const Value(true),
           ),
         );
-    await ref.read(syncServiceProvider).pushOpenShiftsImmediate();
     AuditLogService.log(action: AuditAction.shiftStarted, actionDetails: 'بدأ شيفت — $cashierName');
     return ShiftOpenResult(success: true);
   }
@@ -65,7 +50,9 @@ class ShiftsController {
     final allHistory = await _db.select(_db.historyRecords).get();
     final shiftHistory = allHistory.where((r) {
       final created = DateTime.tryParse(r.createdAt);
-      return created != null && created.isAfter(startTime) && created.isBefore(endTime);
+      return created != null &&
+          created.isAfter(startTime) && created.isBefore(endTime) &&
+          (r.cashier == null || r.cashier == cashierName);
     }).toList();
 
     final totalRevenue = shiftHistory.fold<double>(0, (s, r) => s + r.total);
@@ -83,8 +70,6 @@ class ShiftsController {
         );
     await (_db.delete(_db.openShifts)..where((t) => t.cashierName.equals(cashierName))).go();
 
-    await ref.read(syncServiceProvider).pushOpenShiftsImmediate();
-    ref.read(syncServiceProvider).schedulePushShiftsHistory();
     AuditLogService.log(
       action: AuditAction.shiftEnded,
       actionDetails: 'أنهى شيفت — $cashierName (${totalRevenue.toStringAsFixed(1)} ج)',
@@ -95,23 +80,5 @@ class ShiftsController {
       'sessions_count': shiftHistory.length,
       'duration': endTime.difference(startTime),
     };
-  }
-
-  Future<List<Map<String, dynamic>>> refreshShiftsHistoryFromRemote() async {
-    final shopId = FirebaseService.currentShopId;
-    if (shopId == null) return [];
-    final remote = await FirebaseService.fetchShiftsHistoryOnDemand(shopId);
-    for (final s in remote) {
-      await _db.into(_db.shiftsHistory).insert(
-            ShiftsHistoryCompanion.insert(
-              cashierName: s['cashier_name']?.toString() ?? '',
-              startTime: s['start_time']?.toString() ?? '',
-              endTime: Value(s['end_time']?.toString()),
-              transactionsJson: Value(jsonEncode(s['transactions'] ?? [])),
-            ),
-            mode: InsertMode.insertOrIgnore,
-          );
-    }
-    return remote;
   }
 }

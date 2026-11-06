@@ -328,6 +328,21 @@ class SubscriptionCache extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('LocalCustomer')
+class LocalCustomers extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()();
+  TextColumn get phone => text().unique()();
+  IntColumn get visits => integer().withDefault(const Constant(0))();
+  RealColumn get totalSpent => real().withDefault(const Constant(0))();
+  TextColumn get lastVisit => text().withDefault(const Constant(''))();
+}
+
+class LocalAuditEvents extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get entryJson => text()();
+}
+
 @DriftDatabase(tables: [
   Devices,
   GameTables,
@@ -352,6 +367,8 @@ class SubscriptionCache extends Table {
   DailyArchives,
   YearlyArchives,
   SubscriptionCache,
+  LocalCustomers,
+  LocalAuditEvents,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(openConnection());
@@ -360,7 +377,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.connection);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -370,6 +387,10 @@ class AppDatabase extends _$AppDatabase {
         },
         onUpgrade: (m, from, to) async {
           if (from < 2) await m.addColumn(historyRecords, historyRecords.cashier);
+          if (from < 3) {
+            await m.createTable(localCustomers);
+            await m.createTable(localAuditEvents);
+          }
         },
       );
 

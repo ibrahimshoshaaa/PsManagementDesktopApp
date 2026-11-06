@@ -24,7 +24,6 @@ class DrinkTablesController {
     }
     await (_db.update(_db.drinkTables)..where((t) => t.tableId.equals(tableId)))
         .write(DrinkTablesCompanion(ordersJson: Value(jsonEncode(orders))));
-    await ref.read(syncServiceProvider).pushDrinkTableImmediate(tableId);
   }
 
   /// حساب الفاتورة وتصفير الأوردرات — تربيزات المشروبات مالهاش وقت، بس أوردرات.
@@ -64,17 +63,6 @@ class DrinkTablesController {
     await (_db.update(_db.drinkTables)..where((t) => t.tableId.equals(tableId)))
         .write(const DrinkTablesCompanion(ordersJson: Value('{}')));
 
-    await ref.read(syncServiceProvider).pushDrinkTableImmediate(tableId);
-    await ref.read(syncServiceProvider).appendHistoryRecord({
-      'name': table.name,
-      'device_type': 'drink_table',
-      'total': total,
-      'time_cost': 0.0,
-      'buffet_cost': total,
-      'orders': orders,
-      'date': DateTime.now().toString(),
-      'cashier': ref.read(sessionProvider).cashierName ?? 'أدمن',
-    });
 
     return total;
   }

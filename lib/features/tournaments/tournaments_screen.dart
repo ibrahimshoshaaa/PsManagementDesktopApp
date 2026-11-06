@@ -15,13 +15,6 @@ class TournamentsScreen extends ConsumerStatefulWidget {
 
 class _TournamentsScreenState extends ConsumerState<TournamentsScreen> {
   @override
-  void initState() {
-    super.initState();
-    // البطولات on-demand زي الموبايل — نسحبها لما الشاشة تتفتح.
-    Future.microtask(() => ref.read(tournamentsControllerProvider).refreshFromRemote());
-  }
-
-  @override
   Widget build(BuildContext context) {
     final tournamentsAsync = ref.watch(tournamentsStreamProvider);
 

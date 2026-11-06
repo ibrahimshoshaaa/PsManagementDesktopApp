@@ -13,12 +13,6 @@ class ShiftScreen extends ConsumerStatefulWidget {
 
 class _ShiftScreenState extends ConsumerState<ShiftScreen> {
   @override
-  void initState() {
-    super.initState();
-    Future.microtask(() => ref.read(shiftsControllerProvider).refreshShiftsHistoryFromRemote());
-  }
-
-  @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
     final openShifts = ref.watch(openShiftsStreamProvider).valueOrNull ?? [];

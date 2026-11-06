@@ -4,7 +4,6 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/local/database.dart';
-import '../../data/remote/firebase_service.dart';
 import '../../providers/core_providers.dart';
 
 final tournamentsControllerProvider = Provider<TournamentsController>((ref) => TournamentsController(ref));
@@ -14,31 +13,6 @@ class TournamentsController {
   TournamentsController(this.ref);
 
   AppDatabase get _db => ref.read(databaseProvider);
-
-  /// البطولات on-demand (زي الموبايل بالظبط) — بنسحبها بس لما حد يفتح الشاشة.
-  Future<void> refreshFromRemote() async {
-    final shopId = FirebaseService.currentShopId;
-    if (shopId == null) return;
-    final remote = await FirebaseService.fetchTournamentsOnDemand(shopId);
-    for (final t in remote) {
-      final id = t['id']?.toString();
-      if (id == null) continue;
-      await _db.into(_db.tournaments).insertOnConflictUpdate(
-            TournamentsCompanion.insert(
-              id: id,
-              name: t['name']?.toString() ?? '',
-              game: Value(t['game']?.toString() ?? ''),
-              entryFee: Value((t['entry_fee'] as num?)?.toInt() ?? 0),
-              maxPlayers: Value((t['max_players'] as num?)?.toInt() ?? 8),
-              status: Value(t['status']?.toString() ?? 'تسجيل'),
-              playersJson: Value(jsonEncode(t['players'] ?? [])),
-              roundsJson: Value(jsonEncode(t['rounds'] ?? [])),
-              currentRound: Value((t['current_round'] as num?)?.toInt() ?? 0),
-              winnerId: Value(t['winner_id']?.toString()),
-            ),
-          );
-    }
-  }
 
   Future<void> create({required String name, required String game, int entryFee = 0, int maxPlayers = 8}) async {
     await _db.into(_db.tournaments).insert(
@@ -50,7 +24,6 @@ class TournamentsController {
             maxPlayers: Value(maxPlayers),
           ),
         );
-    await _pushAll();
   }
 
   Future<void> addPlayer(String tournamentId, String playerName) async {
@@ -59,7 +32,6 @@ class TournamentsController {
     players.add({'id': DateTime.now().millisecondsSinceEpoch.toString(), 'name': playerName});
     await (_db.update(_db.tournaments)..where((x) => x.id.equals(tournamentId)))
         .write(TournamentsCompanion(playersJson: Value(jsonEncode(players))));
-    await _pushAll();
   }
 
   /// توليد البراكت — إقصاء مباشر (single elimination)، مع bye تلقائي لو عدد
@@ -99,7 +71,6 @@ class TournamentsController {
         currentRound: const Value(0),
       ),
     );
-    await _pushAll();
     await _maybeGenerateNextRound(tournamentId);
   }
 
@@ -114,7 +85,6 @@ class TournamentsController {
 
     await (_db.update(_db.tournaments)..where((x) => x.id.equals(tournamentId)))
         .write(TournamentsCompanion(roundsJson: Value(jsonEncode(rounds))));
-    await _pushAll();
     await _maybeGenerateNextRound(tournamentId);
   }
 
@@ -133,7 +103,6 @@ class TournamentsController {
       await (_db.update(_db.tournaments)..where((x) => x.id.equals(tournamentId))).write(
         TournamentsCompanion(status: const Value('منتهية'), winnerId: Value(winner['id']?.toString())),
       );
-      await _pushAll();
       return;
     }
 
@@ -155,14 +124,11 @@ class TournamentsController {
     await (_db.update(_db.tournaments)..where((x) => x.id.equals(tournamentId))).write(
       TournamentsCompanion(roundsJson: Value(jsonEncode(rounds)), currentRound: Value(rounds.length - 1)),
     );
-    await _pushAll();
     await _maybeGenerateNextRound(tournamentId);
   }
 
   Future<void> delete(String tournamentId) async {
     await (_db.delete(_db.tournaments)..where((x) => x.id.equals(tournamentId))).go();
-    await _pushAll();
   }
 
-  Future<void> _pushAll() => ref.read(syncServiceProvider).pushTournamentsImmediate();
 }

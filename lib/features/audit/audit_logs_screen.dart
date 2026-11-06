@@ -1,13 +1,19 @@
+import 'dart:convert';
+
+import 'package:drift/drift.dart' show OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/remote/audit_log_service.dart';
-import '../../data/remote/firebase_service.dart';
+import '../../providers/core_providers.dart';
 
-final _auditLogsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final shopId = FirebaseService.currentShopId;
-  if (shopId == null) return [];
-  return fetchAuditLogs(shopId);
+final _auditLogsProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
+  final db = ref.watch(databaseProvider);
+  final query = db.select(db.localAuditEvents)
+    ..orderBy([(t) => OrderingTerm.desc(t.id)])
+    ..limit(100);
+  return query.watch().map((rows) => [
+    for (final row in rows) Map<String, dynamic>.from(jsonDecode(row.entryJson) as Map),
+  ]);
 });
 
 class AuditLogsScreen extends ConsumerWidget {

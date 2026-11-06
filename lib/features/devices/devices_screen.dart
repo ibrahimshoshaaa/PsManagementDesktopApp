@@ -7,7 +7,6 @@ import '../../core/theme/app_colors.dart';
 import '../../data/local/database.dart';
 import '../../domain/device_logic.dart';
 import '../../providers/core_providers.dart';
-import '../shared/qr_code_dialog.dart';
 import 'devices_controller.dart';
 
 class DevicesScreen extends ConsumerWidget {
@@ -105,15 +104,6 @@ class _DeviceCard extends ConsumerWidget {
                       const SizedBox(width: 4),
                     ],
                     _Badge(label: isPs5 ? 'PS5' : 'PS4', color: isPs5 ? Colors.purple : AppColors.accent),
-                    const SizedBox(width: 6),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(6),
-                      onTap: () => _showQr(context, ref),
-                      child: const Padding(
-                        padding: EdgeInsets.all(2),
-                        child: Icon(Icons.qr_code_2, size: 18, color: Colors.white38),
-                      ),
-                    ),
                   ],
                 ),
                 const Spacer(),
@@ -260,21 +250,6 @@ class _DeviceCard extends ConsumerWidget {
     }
   }
 
-  void _showQr(BuildContext context, WidgetRef ref) {
-    final shopId = ref.read(appConfigProvider).valueOrNull?.shopId;
-    if (shopId == null) return;
-    final isPs5 = device.deviceType == 'ps5';
-    showQrCodeDialog(
-      context,
-      name: device.displayName,
-      url: QrLinkBuilder.device(shopId, device.deviceId),
-      color: isPs5 ? Colors.purple : AppColors.accent,
-      typeLabel: isPs5 ? 'PS5' : 'PS4',
-      icon: Icons.sports_esports,
-      subtitle: 'سيتمكن العميل من رؤية الوقت والحساب\nوإرسال طلبات المشروبات مباشرة',
-    );
-  }
-
   void _confirmStop(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -348,7 +323,7 @@ class _DeviceDetailSheetState extends ConsumerState<_DeviceDetailSheet> {
                     initialValue: device.timerAlertMinutes?.toString(),
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(labelText: 'تنبيه بعد (دقيقة)'),
-                    onSubmitted: (v) => controller.setTimerAlert(device.deviceId, int.tryParse(v)),
+                    onFieldSubmitted: (v) => controller.setTimerAlert(device.deviceId, int.tryParse(v)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -359,7 +334,7 @@ class _DeviceDetailSheetState extends ConsumerState<_DeviceDetailSheet> {
                         : null,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(labelText: 'عد تنازلي (دقيقة)'),
-                    onSubmitted: (v) => controller.setCountdown(device.deviceId, int.tryParse(v)),
+                    onFieldSubmitted: (v) => controller.setCountdown(device.deviceId, int.tryParse(v)),
                   ),
                 ),
               ],

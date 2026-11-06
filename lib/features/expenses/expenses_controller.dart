@@ -32,12 +32,10 @@ class ExpensesController {
             createdAt: now.toIso8601String(),
           ),
         );
-    ref.read(syncServiceProvider).schedulePushStatic();
   }
 
   Future<void> delete(String id) async {
     await (_db.delete(_db.expenses)..where((t) => t.id.equals(id))).go();
-    ref.read(syncServiceProvider).schedulePushStatic();
   }
 
   Future<void> addCategory(String name) async {
@@ -45,6 +43,5 @@ class ExpensesController {
     await _db.into(_db.expenseCategories).insert(
           ExpenseCategoriesCompanion.insert(name: name, sortOrder: Value(existing.length)),
         );
-    ref.read(syncServiceProvider).schedulePushStatic();
   }
 }

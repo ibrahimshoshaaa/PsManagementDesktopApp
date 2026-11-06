@@ -3,7 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/local/database.dart';
-import '../../data/remote/audit_log_service.dart';
+import '../../data/local/audit_log_service.dart';
 import '../../domain/device_logic.dart';
 import '../../providers/core_providers.dart';
 
@@ -17,7 +17,6 @@ class DevicesController {
 
   AppDatabase get _db => ref.read(databaseProvider);
 
-  Future<void> _pushDevice(int deviceId) => ref.read(syncServiceProvider).pushDeviceImmediate(deviceId);
 
   /// تشغيل جهاز فاضي.
   Future<void> start(int deviceId, {required String mode, int? minutes}) async {
@@ -39,7 +38,6 @@ class DevicesController {
         sessionLogJson: const Value('[]'),
       ));
     if (updated == 0) return;
-    await _pushDevice(deviceId);
     AuditLogService.logDevice(
       action: AuditAction.deviceStart,
       deviceName: device.displayName,
@@ -66,21 +64,6 @@ class DevicesController {
       date: date,
       createdAt: date,
     ));
-    await ref.read(syncServiceProvider).appendHistoryRecord({
-      'id': deviceId,
-      'name': device.displayName,
-      'device_type': device.deviceType,
-      'play_mode': mode,
-      'duration': '1 ماتش',
-      'elapsed_seconds': 0,
-      'time_cost': price,
-      'buffet_cost': 0.0,
-      'total': price,
-      'orders': <String, int>{},
-      'date': date,
-      'is_match': true,
-      'cashier': cashier,
-    });
     AuditLogService.logDevice(
       action: AuditAction.matchRecorded,
       deviceName: device.displayName,
@@ -96,7 +79,6 @@ class DevicesController {
         pauseStartTime: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
       ),
     );
-    await _pushDevice(deviceId);
   }
 
   Future<void> resume(int deviceId) async {
@@ -113,7 +95,6 @@ class DevicesController {
         startTime: Value(device.startTime! + pausedDuration),
       ),
     );
-    await _pushDevice(deviceId);
   }
 
   /// إلغاء الجلسة من غير حساب (زي device_cancel في سجل التدقيق) — الجهاز
@@ -135,7 +116,6 @@ class DevicesController {
       'UPDATE devices SET start_time = NULL, pause_start_time = NULL, countdown_total_seconds = NULL WHERE device_id = ?',
       [deviceId],
     );
-    await _pushDevice(deviceId);
     if (device != null) {
       AuditLogService.logDevice(action: AuditAction.deviceCancel, deviceName: device.displayName, deviceType: device.deviceType);
     }
@@ -193,14 +173,12 @@ class DevicesController {
       );
       return true;
     });
-    if (moved) await ref.read(syncServiceProvider).pushAllDevicesImmediate();
     return moved;
   }
 
   Future<void> setTimerAlert(int deviceId, int? minutes) async {
     await (_db.update(_db.devices)..where((t) => t.deviceId.equals(deviceId)))
         .write(DevicesCompanion(timerAlertMinutes: Value(minutes)));
-    await _pushDevice(deviceId);
   }
 
   Future<void> setCountdown(int deviceId, int? totalMinutes) async {
@@ -211,7 +189,6 @@ class DevicesController {
         countdownAlertSent: const Value(false),
       ),
     );
-    await _pushDevice(deviceId);
   }
 
   Future<void> addOrder(int deviceId, String itemName, int deltaQty) async {
@@ -225,7 +202,6 @@ class DevicesController {
     }
     await (_db.update(_db.devices)..where((t) => t.deviceId.equals(deviceId)))
         .write(DevicesCompanion(ordersJson: Value(jsonEncode(orders))));
-    await _pushDevice(deviceId);
   }
 
   /// إنهاء الجلسة — يحسب التكلفة، يسجّل في السجل، ويرجّع الجهاز لحالة "متاح".
@@ -288,20 +264,6 @@ class DevicesController {
       [deviceId],
     );
 
-    await _pushDevice(deviceId);
-    await ref.read(syncServiceProvider).appendHistoryRecord({
-      'name': device.displayName,
-      'device_type': device.deviceType,
-      'is_match': false,
-      'is_game': false,
-      'total': total,
-      'time_cost': timeCost,
-      'buffet_cost': buffetCost,
-      'elapsed_seconds': elapsed,
-      'orders': orders,
-      'date': DateTime.now().toString(),
-      'cashier': closedBy,
-    });
     AuditLogService.logDevice(
       action: AuditAction.deviceStop,
       deviceName: device.displayName,

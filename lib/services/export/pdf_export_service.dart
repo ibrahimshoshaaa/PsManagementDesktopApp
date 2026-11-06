@@ -1,30 +1,24 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
+import 'package:path/path.dart' as p;
 
 import '../../data/local/database.dart';
 import 'export_paths.dart';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// ⚠️ ملاحظة مهمة عن العربي في الـ PDF:
-// بنستخدم خط Noto Sans Arabic من Google Fonts (عبر PdfGoogleFonts) — أول
-// مرة يتولد فيها PDF محتاج إنترنت عشان يحمّل الخط، وبعدها بيتخزن محليًا
-// (cache) وميحتجش نت تاني. لو عايز الموضوع offline بالكامل من أول تشغيل،
-// نزّل ملف الخط .ttf حط، حطه في assets/fonts/NotoSansArabic-Regular.ttf،
-// وسجّله في pubspec.yaml تحت flutter/fonts، واستبدل PdfGoogleFonts هنا بـ:
-//   pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'))
-//
-// جودة تشكيل الحروف العربي (اتصال الحروف) بتعتمد على نسخة حزمة pdf — لو
-// شكل الحروف طلع متقطع، جرّب ترقية الحزمة لأحدث إصدار أو استخدم خط عربي
-// مختلف بيدعم OpenType shaping بشكل أفضل.
-// ═══════════════════════════════════════════════════════════════════════════
-
 class PdfExportService {
   static Future<pw.ThemeData> _arabicTheme() async {
-    final regular = await PdfGoogleFonts.notoSansArabicRegular();
-    final bold = await PdfGoogleFonts.notoSansArabicBold();
-    return pw.ThemeData.withFont(base: regular, bold: bold);
+    final windows = Platform.environment['SystemRoot'] ?? r'C:\Windows';
+    final fonts = p.join(windows, 'Fonts');
+    final regular = await File(p.join(fonts, 'tahoma.ttf')).readAsBytes();
+    final bold = File(p.join(fonts, 'tahomabd.ttf'));
+    return pw.ThemeData.withFont(
+      base: pw.Font.ttf(ByteData.sublistView(regular)),
+      bold: pw.Font.ttf(ByteData.sublistView(
+        await bold.exists() ? await bold.readAsBytes() : regular,
+      )),
+    );
   }
 
   /// تقرير يومي — قائمة سجلات + إجماليات.

@@ -12,16 +12,13 @@ class RechargeController {
   RechargeController(this.ref);
 
   AppDatabase get _db => ref.read(databaseProvider);
-  void _pushStatic() => ref.read(syncServiceProvider).schedulePushStatic();
 
   Future<void> addCard(String name, int value) async {
     await _db.into(_db.rechargeCards).insert(RechargeCardsCompanion.insert(name: name, value: value));
-    _pushStatic();
   }
 
   Future<void> removeCard(int rowId) async {
     await (_db.delete(_db.rechargeCards)..where((t) => t.rowId.equals(rowId))).go();
-    _pushStatic();
   }
 
   /// شحن رصيد (top_up) — بيزود الرصيد المتاح.
@@ -30,7 +27,6 @@ class RechargeController {
     await (_db.update(_db.appConfig)..where((t) => t.id.equals(0)))
         .write(AppConfigCompanion(rechargeBalance: Value(config.rechargeBalance + amount.round())));
     await _addTransaction(type: 'top_up', name: note, value: amount, cashier: cashier);
-    _pushStatic();
   }
 
   /// استخدام كارت/شحن حر — بيقل الرصيد المتاح، وبيتسجل في السجل زي الموبايل بالظبط.
@@ -54,17 +50,6 @@ class RechargeController {
             createdAt: DateTime.now().toIso8601String(),
           ),
         );
-    await ref.read(syncServiceProvider).appendHistoryRecord({
-      'name': name,
-      'device_type': 'recharge',
-      'total': value,
-      'time_cost': value,
-      'buffet_cost': 0.0,
-      'orders': <String, int>{},
-      'date': DateTime.now().toString(),
-      'cashier': ref.read(sessionProvider).cashierName ?? 'أدمن',
-    });
-    _pushStatic();
   }
 
   Future<void> _addTransaction({required String type, required String name, required double value, required String cashier}) async {

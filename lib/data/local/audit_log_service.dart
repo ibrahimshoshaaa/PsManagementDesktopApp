@@ -1,10 +1,6 @@
-import '../local/database.dart';
-import 'firebase_service.dart';
+import 'dart:convert';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// AuditLogService — منقول حرفيًا من lib/services/audit_log_service.dart
-// بتاع الموبايل. المسار: shops/{shopId}/activity_logs/{pushKey}
-// ═══════════════════════════════════════════════════════════════════════════
+import 'database.dart';
 
 enum AuditAction {
   deviceStart,
@@ -71,18 +67,19 @@ enum AuditAction {
 }
 
 class AuditLogService {
-  static String? _shopId;
+  static AppDatabase? _database;
   static String? _cashierName;
   static bool _isAdmin = false;
 
-  static void configure({required String? shopId, required String? cashierName, required bool isAdmin}) {
-    _shopId = shopId;
+  static void configure({required AppDatabase database, required String? cashierName, required bool isAdmin}) {
+    _database = database;
     _cashierName = cashierName;
     _isAdmin = isAdmin;
   }
 
   static Future<void> log({required AuditAction action, required String actionDetails, Map<String, dynamic>? extra}) async {
-    if (_shopId == null) return;
+    final database = _database;
+    if (database == null) return;
     try {
       final entry = {
         'action': action.name,
@@ -94,8 +91,9 @@ class AuditLogService {
         'role': _isAdmin ? 'admin' : 'cashier',
         if (extra != null) ...extra,
       };
-      // fire-and-forget — ما بنستناش عشان ما نبطئش الـ UI
-      FirebaseService.push('shops/$_shopId/activity_logs', entry);
+      await database.into(database.localAuditEvents).insert(
+        LocalAuditEventsCompanion.insert(entryJson: jsonEncode(entry)),
+      );
     } catch (_) {}
   }
 
@@ -183,19 +181,5 @@ class AuditLogService {
       default:
         return '"$name" — ${a.name}';
     }
-  }
-}
-
-/// جلب سجل التدقيق للعرض (on-demand، أدمن بس) — الموبايل مش عنده listener
-/// دايم عليه، بيتحمل وقت فتح الشاشة زي البطولات بالظبط.
-Future<List<Map<String, dynamic>>> fetchAuditLogs(String shopId, {int limit = 100}) async {
-  try {
-    final data = await FirebaseService.get('${FirebaseService.activityLogsPath(shopId)}');
-    if (data == null || data is! Map) return [];
-    final entries = data.entries.map((e) => Map<String, dynamic>.from(e.value as Map)).toList();
-    entries.sort((a, b) => (b['timestamp_ms'] as num? ?? 0).compareTo(a['timestamp_ms'] as num? ?? 0));
-    return entries.take(limit).toList();
-  } catch (_) {
-    return [];
   }
 }

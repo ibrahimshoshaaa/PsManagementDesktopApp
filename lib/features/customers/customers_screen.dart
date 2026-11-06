@@ -1,18 +1,20 @@
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 
-import '../../data/remote/firebase_service.dart';
-import 'customer.dart';
+import '../../data/local/database.dart';
+import '../../providers/core_providers.dart';
 
-class CustomersScreen extends StatefulWidget {
+class CustomersScreen extends ConsumerStatefulWidget {
   const CustomersScreen({super.key});
 
   @override
-  State<CustomersScreen> createState() => _CustomersScreenState();
+  ConsumerState<CustomersScreen> createState() => _CustomersScreenState();
 }
 
-class _CustomersScreenState extends State<CustomersScreen> {
-  List<Customer> _customers = [];
+class _CustomersScreenState extends ConsumerState<CustomersScreen> {
+  List<LocalCustomer> _customers = [];
   String _query = '';
   bool _busy = true;
 
@@ -24,24 +26,24 @@ class _CustomersScreenState extends State<CustomersScreen> {
 
   Future<void> _reload() async {
     setState(() => _busy = true);
-    final data = await FirebaseService.get('customers');
-    if (!mounted) return;
-    setState(() {
-      if (data is Map) {
-        _customers = [
-          for (final row in data.entries)
-            if (row.value is Map) Customer.fromMap(row.key.toString(), row.value as Map),
-        ]..sort((a, b) => b.lastVisit.compareTo(a.lastVisit));
+    try {
+      final db = ref.read(databaseProvider);
+      final rows = await db.select(db.localCustomers).get();
+      if (mounted) {
+        setState(() => _customers = rows..sort((a, b) => b.lastVisit.compareTo(a.lastVisit)));
       }
-      _busy = false;
-    });
+    } catch (_) {
+      if (mounted) _message('تعذر تحميل العملاء من قاعدة البيانات.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   void _message(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
-  Future<void> _edit([Customer? customer]) async {
+  Future<void> _edit([LocalCustomer? customer]) async {
     var name = customer?.name ?? '';
     var phone = customer?.phone ?? '';
     final key = GlobalKey<FormState>();
@@ -95,21 +97,24 @@ class _CustomersScreenState extends State<CustomersScreen> {
     );
     if (!mounted || saved != true) return;
     setState(() => _busy = true);
-    final fields = {'name': name, 'phone': phone};
-    final ok = customer == null
-        ? await FirebaseService.push('customers', {
-            ...fields,
-            'visits': 0,
-            'total_spent': 0,
-            'last_visit': DateTime.now().toIso8601String(),
-          }) != null
-        : await FirebaseService.patch('customers/${customer.id}', fields);
+    try {
+      final db = ref.read(databaseProvider);
+      if (customer == null) {
+        await db.into(db.localCustomers).insert(
+          LocalCustomersCompanion.insert(name: name, phone: phone),
+        );
+      } else {
+        await (db.update(db.localCustomers)..where((t) => t.id.equals(customer.id)))
+            .write(LocalCustomersCompanion(name: Value(name), phone: Value(phone)));
+      }
+    } catch (_) {
+      if (mounted) _message('تعذر حفظ بيانات العميل.');
+    }
     if (!mounted) return;
-    if (!ok) _message('تعذر حفظ بيانات العميل. راجع الاتصال وحاول تاني.');
     await _reload();
   }
 
-  Future<void> _delete(Customer customer) async {
+  Future<void> _delete(LocalCustomer customer) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialog) => AlertDialog(
@@ -123,13 +128,13 @@ class _CustomersScreenState extends State<CustomersScreen> {
     );
     if (!mounted || confirmed != true) return;
     setState(() => _busy = true);
-    final ok = await FirebaseService.delete('customers/${customer.id}');
-    if (!mounted) return;
-    if (ok) {
-      setState(() => _customers.removeWhere((row) => row.id == customer.id));
-    } else {
-      _message('تعذر حذف العميل.');
+    try {
+      final db = ref.read(databaseProvider);
+      await (db.delete(db.localCustomers)..where((t) => t.id.equals(customer.id))).go();
+    } catch (_) {
+      if (mounted) _message('تعذر حذف العميل.');
     }
+    if (!mounted) return;
     await _reload();
   }
 
@@ -176,7 +181,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
                         child: ListTile(
                           leading: const CircleAvatar(child: Icon(Icons.person_outline)),
                           title: Text(row.name.isEmpty ? row.phone : row.name),
-                          subtitle: Text('${row.phone}  •  ${row.visits} زيارة  •  ${row.totalSpent.toStringAsFixed(2)} ج'),
+                          subtitle: Text(row.phone),
                           trailing: Wrap(
                             children: [
                               IconButton(

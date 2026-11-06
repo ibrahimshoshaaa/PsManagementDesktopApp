@@ -9,7 +9,6 @@ import '../tables/tables_screen.dart';
 import '../drink_tables/drink_tables_screen.dart';
 import '../shifts/shift_screen.dart';
 import '../recharge/recharge_screen.dart';
-import '../customer_orders/customer_orders_screen.dart';
 import '../tournaments/tournaments_screen.dart';
 import '../history/history_screen.dart';
 import '../debts/debts_screen.dart';
@@ -60,7 +59,6 @@ class _AppShellState extends ConsumerState<AppShell> {
       const _NavItem('المصروفات', Icons.payments, ExpensesScreen()),
       if (config?.rechargeEnabled ?? false)
         const _NavItem('الشحن', Icons.battery_charging_full, RechargeScreen()),
-      const _NavItem('طلبات العملاء', Icons.qr_code_scanner, CustomerOrdersScreen()),
       _NavItem('الأرشيف', Icons.archive_outlined, const ArchiveScreen(), adminOnly: true),
       _NavItem('سجل التدقيق', Icons.fact_check, const AuditLogsScreen(), adminOnly: true),
       _NavItem('الإعدادات', Icons.settings, const SettingsScreen(), adminOnly: true),

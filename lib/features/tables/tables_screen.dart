@@ -5,7 +5,6 @@ import '../../core/theme/app_colors.dart';
 import '../../data/local/database.dart';
 import '../../domain/table_logic.dart';
 import '../../providers/core_providers.dart';
-import '../shared/qr_code_dialog.dart';
 import 'tables_controller.dart';
 
 class TablesScreen extends ConsumerWidget {
@@ -94,15 +93,6 @@ class _TableCard extends ConsumerWidget {
                               fontWeight: FontWeight.bold,
                               color: isBilliard ? Colors.purple : AppColors.green)),
                     ),
-                    const SizedBox(width: 6),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(6),
-                      onTap: () => _showQr(context, ref),
-                      child: const Padding(
-                        padding: EdgeInsets.all(2),
-                        child: Icon(Icons.qr_code_2, size: 18, color: Colors.white38),
-                      ),
-                    ),
                   ],
                 ),
                 const Spacer(),
@@ -164,21 +154,6 @@ class _TableCard extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
-
-  void _showQr(BuildContext context, WidgetRef ref) {
-    final shopId = ref.read(appConfigProvider).valueOrNull?.shopId;
-    if (shopId == null) return;
-    final isBilliard = table.tableType == 'billiard';
-    showQrCodeDialog(
-      context,
-      name: table.name,
-      url: QrLinkBuilder.table(shopId, table.tableId),
-      color: isBilliard ? Colors.purple : AppColors.green,
-      typeLabel: isBilliard ? '🎱 بلياردو' : '🏓 بينج',
-      icon: Icons.table_bar,
-      subtitle: 'سيتمكن العميل من متابعة الوقت والحساب\nوإرسال طلبات المشروبات للتربيزة',
     );
   }
 

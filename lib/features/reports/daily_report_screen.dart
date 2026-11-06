@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/remote/firebase_service.dart';
-import '../../data/remote/json_mappers.dart';
+import 'dart:convert';
+
+import '../../data/local/database.dart';
 import '../../providers/core_providers.dart';
 
 class DailyReportScreen extends ConsumerStatefulWidget {
@@ -13,26 +14,7 @@ class DailyReportScreen extends ConsumerStatefulWidget {
 }
 
 class _DailyReportScreenState extends ConsumerState<DailyReportScreen> {
-  List<Map<String, dynamic>>? _cloud;
-  bool _loading = false;
   int _tab = 0;
-
-  Future<void> _refresh() async {
-    final shopId = ref.read(appConfigProvider).valueOrNull?.shopId;
-    if (shopId == null) return;
-    setState(() => _loading = true);
-    final records = await FirebaseService.getRecentHistory(shopId, limit: 1000);
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-      if (records.isNotEmpty) _cloud = records;
-    });
-    if (records.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('مفيش سجلات سحابية متاحة للعرض.')),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +25,7 @@ class _DailyReportScreenState extends ConsumerState<DailyReportScreen> {
     final todayExpenses = expenses.where(
       (row) => row.date == '${today.day}/${today.month}/${today.year}',
     ).fold<double>(0, (sum, row) => sum + row.amount);
-    final records = (_cloud ?? local.map(historyRecordToJson)).where((row) {
+    final records = local.map(historyRecordToJson).where((row) {
       final date = DateTime.tryParse(row['date']?.toString() ?? '')?.toLocal();
       return DateUtils.isSameDay(date, today);
     }).toList();
@@ -89,26 +71,8 @@ class _DailyReportScreenState extends ConsumerState<DailyReportScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text('${today.day}/${today.month}/${today.year}  •  ${_cloud == null ? 'سجل الكمبيوتر' : 'السجل السحابي'}'),
-              OutlinedButton.icon(
-                onPressed: _loading ? null : _refresh,
-                icon: const Icon(Icons.cloud_download_outlined),
-                label: const Text('آخر 1000 سجل سحابي'),
-              ),
-              if (_cloud != null)
-                TextButton(
-                  onPressed: _loading ? null : () => setState(() => _cloud = null),
-                  child: const Text('عرض سجل الكمبيوتر'),
-                ),
-            ],
-          ),
+          Text('${today.day}/${today.month}/${today.year}  •  سجل الكمبيوتر'),
           const SizedBox(height: 16),
-          if (_loading) const LinearProgressIndicator(),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -171,3 +135,14 @@ class _Totals {
   int count = 0;
   double amount = 0;
 }
+
+Map<String, dynamic> historyRecordToJson(HistoryRecordRow row) => {
+  'name': row.name,
+  'cashier': row.cashier,
+  'device_type': row.deviceType,
+  'total': row.total,
+  'time_cost': row.timeCost,
+  'buffet_cost': row.buffetCost,
+  'orders': jsonDecode(row.ordersJson),
+  'date': row.date,
+};

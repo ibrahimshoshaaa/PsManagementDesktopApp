@@ -3,7 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/local/database.dart';
-import '../../data/remote/audit_log_service.dart';
+import '../../data/local/audit_log_service.dart';
 import '../../domain/table_logic.dart';
 import '../../providers/core_providers.dart';
 
@@ -15,7 +15,6 @@ class TablesController {
 
   AppDatabase get _db => ref.read(databaseProvider);
 
-  void _schedulePush() => ref.read(syncServiceProvider).schedulePushTables();
 
   Future<void> start(int tableId) async {
     final table = await (_db.select(_db.gameTables)..where((t) => t.tableId.equals(tableId))).getSingleOrNull();
@@ -26,7 +25,6 @@ class TablesController {
         pauseStartTime: const Value.absent(),
       ),
     );
-    _schedulePush();
     if (table != null) AuditLogService.logTable(action: AuditAction.tableStart, tableName: table.name);
   }
 
@@ -37,7 +35,6 @@ class TablesController {
         pauseStartTime: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
       ),
     );
-    _schedulePush();
   }
 
   Future<void> resume(int tableId) async {
@@ -52,7 +49,6 @@ class TablesController {
         startTime: Value(table.startTime! + pausedDuration),
       ),
     );
-    _schedulePush();
   }
 
   /// إلغاء الجلسة من غير حساب.
@@ -64,7 +60,6 @@ class TablesController {
       'UPDATE game_tables SET start_time = NULL, pause_start_time = NULL, added_seconds = 0 WHERE table_id = ?',
       [tableId],
     );
-    _schedulePush();
     if (table != null) AuditLogService.logTable(action: AuditAction.tableCancel, tableName: table.name);
   }
 
@@ -79,7 +74,6 @@ class TablesController {
     }
     await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId)))
         .write(GameTablesCompanion(ordersJson: Value(jsonEncode(orders))));
-    _schedulePush();
   }
 
   /// إنهاء الجلسة — [byGame] لو true بيتحاسب بسعر اللعبة الثابت (game_price)
@@ -133,20 +127,6 @@ class TablesController {
       [tableId],
     );
 
-    _schedulePush();
-    await ref.read(syncServiceProvider).appendHistoryRecord({
-      'name': table.name,
-      'device_type': 'table',
-      'is_match': false,
-      'is_game': byGame,
-      'total': total,
-      'time_cost': timeCost,
-      'buffet_cost': buffetCost,
-      'elapsed_seconds': elapsed,
-      'orders': orders,
-      'date': DateTime.now().toString(),
-      'cashier': ref.read(sessionProvider).cashierName ?? 'أدمن',
-    });
     AuditLogService.logTable(action: AuditAction.tableStop, tableName: table.name, extra: '${total.toStringAsFixed(1)} ج');
 
     return {'total': total, 'time_cost': timeCost, 'buffet_cost': buffetCost};

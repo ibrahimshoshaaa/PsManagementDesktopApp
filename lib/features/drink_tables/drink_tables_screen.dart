@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../data/local/database.dart';
 import '../../providers/core_providers.dart';
-import '../shared/qr_code_dialog.dart';
 import 'drink_tables_controller.dart';
 
 class DrinkTablesScreen extends ConsumerWidget {
@@ -84,14 +83,6 @@ class _DrinkTableCard extends ConsumerWidget {
                           style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
                           overflow: TextOverflow.ellipsis),
                     ),
-                    InkWell(
-                      borderRadius: BorderRadius.circular(6),
-                      onTap: () => _showQr(context, ref),
-                      child: const Padding(
-                        padding: EdgeInsets.all(2),
-                        child: Icon(Icons.qr_code_2, size: 18, color: Colors.white38),
-                      ),
-                    ),
                   ],
                 ),
                 const Spacer(),
@@ -114,20 +105,6 @@ class _DrinkTableCard extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
-
-  void _showQr(BuildContext context, WidgetRef ref) {
-    final shopId = ref.read(appConfigProvider).valueOrNull?.shopId;
-    if (shopId == null) return;
-    showQrCodeDialog(
-      context,
-      name: table.name,
-      url: QrLinkBuilder.drinkTable(shopId, table.tableId),
-      color: AppColors.orange,
-      typeLabel: '🍹 مشروبات',
-      icon: Icons.local_drink,
-      subtitle: 'سيتمكن العميل من عرض المنيو\nوإرسال طلباته مباشرة لتربيزة المشروبات',
     );
   }
 
