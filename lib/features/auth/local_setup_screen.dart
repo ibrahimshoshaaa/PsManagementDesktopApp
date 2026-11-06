@@ -37,7 +37,7 @@ class _LocalSetupScreenState extends ConsumerState<LocalSetupScreen> {
       final database = ref.read(databaseProvider);
       final hash = hashPassword(_password.text);
       await (database.update(database.appConfig)
-            ..where((row) => row.id.equals(0) & row.adminPasswordHash.equals('')))
+            ..where((row) => row.id.equals(0)))
           .write(AppConfigCompanion(
         shopName: Value(_shop.text.trim()),
         adminPasswordHash: Value(hash),

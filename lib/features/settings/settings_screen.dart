@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/core_providers.dart';
 import 'settings_controller.dart';
+import '../cashier/cashiers_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -39,7 +40,7 @@ class SettingsScreen extends StatelessWidget {
                 _GeneralTab(),
                 _DevicesTablesTab(),
                 _PricesTab(),
-                _CashiersTab(),
+                CashiersScreen(),
                 _MenuTab(),
                 _InventoryTab(),
               ],
@@ -300,90 +301,6 @@ class _PricesTab extends ConsumerWidget {
 }
 
 // ═══════════════════════════════════════════════════════ الكاشيرز ═════
-
-class _CashiersTab extends ConsumerWidget {
-  const _CashiersTab();
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cashiers = ref.watch(cashiersStreamProvider).valueOrNull ?? [];
-    final controller = ref.read(settingsControllerProvider);
-
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        _SectionHeader(title: 'الكاشيرز (${cashiers.length})', onAdd: () => _showAddDialog(context, controller)),
-        ...cashiers.map((c) => ListTile(
-              leading: const Icon(Icons.person, color: Colors.white54),
-              title: Text(c.name, style: const TextStyle(color: Colors.white)),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextButton(
-                    onPressed: () => _showChangePasswordDialog(context, controller, c.id),
-                    child: const Text('كلمة سر جديدة'),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: AppColors.red),
-                    onPressed: () => controller.removeCashier(c.id),
-                  ),
-                ],
-              ),
-            )),
-      ],
-    );
-  }
-
-  void _showAddDialog(BuildContext context, SettingsController controller) {
-    final nameController = TextEditingController();
-    final passwordController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('كاشير جديد'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'الاسم')),
-            const SizedBox(height: 12),
-            TextField(controller: passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة السر')),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () {
-              if (nameController.text.trim().isEmpty || passwordController.text.isEmpty) return;
-              controller.addCashier(name: nameController.text.trim(), password: passwordController.text);
-              Navigator.pop(context);
-            },
-            child: const Text('إضافة'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showChangePasswordDialog(BuildContext context, SettingsController controller, int id) {
-    final passwordController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('كلمة سر جديدة'),
-        content: TextField(controller: passwordController, obscureText: true),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-          FilledButton(
-            onPressed: () {
-              if (passwordController.text.isNotEmpty) controller.changeCashierPassword(id, passwordController.text);
-              Navigator.pop(context);
-            },
-            child: const Text('حفظ'),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ═══════════════════════════════════════════════════════════ المنيو ═════
 

@@ -93,9 +93,31 @@ class SettingsController {
     AuditLogService.log(action: AuditAction.cashierAdded, actionDetails: 'أضاف كاشير جديد: $name');
   }
 
-  Future<void> removeCashier(int id) async {
+  Future<CashierRow?> _cashierWithoutOpenShift(int id) async {
     final cashier = await (_db.select(_db.cashiers)..where((t) => t.id.equals(id))).getSingleOrNull();
-    await (_db.delete(_db.cashiers)..where((t) => t.id.equals(id))).go();
+    if (cashier == null) return null;
+    final shift = await (_db.select(_db.openShifts)
+          ..where((t) => t.cashierName.equals(cashier.name)))
+        .getSingleOrNull();
+    if (shift != null) throw StateError('Cashier has an open shift');
+    return cashier;
+  }
+
+  Future<void> renameCashier(int id, String name) async {
+    await _db.transaction(() async {
+      if (await _cashierWithoutOpenShift(id) == null) return;
+      await (_db.update(_db.cashiers)..where((t) => t.id.equals(id)))
+          .write(CashiersCompanion(name: Value(name)));
+    });
+  }
+
+  Future<void> removeCashier(int id) async {
+    final cashier = await _db.transaction(() async {
+      final existing = await _cashierWithoutOpenShift(id);
+      if (existing == null) return null;
+      await (_db.delete(_db.cashiers)..where((t) => t.id.equals(id))).go();
+      return existing;
+    });
     if (cashier != null) AuditLogService.log(action: AuditAction.cashierRemoved, actionDetails: 'حذف كاشير: ${cashier.name}');
   }
 

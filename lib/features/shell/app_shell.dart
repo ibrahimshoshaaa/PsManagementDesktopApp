@@ -19,6 +19,10 @@ import '../archive/archive_screen.dart';
 import '../customers/customers_screen.dart';
 import '../reports/daily_report_screen.dart';
 import '../inventory/inventory_screen.dart';
+import '../buffet/buffet_categories_screen.dart';
+import '../cashier/cashiers_screen.dart';
+import '../cashier/cashier_workspace.dart';
+import '../local_orders/local_orders_screen.dart';
 
 class _NavItem {
   final String label;
@@ -35,7 +39,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  String _selected = 'الأجهزة';
+  String? _selected;
 
   @override
   Widget build(BuildContext context) {
@@ -44,10 +48,13 @@ class _AppShellState extends ConsumerState<AppShell> {
     final isAdmin = session.role == UserRole.admin;
 
     final items = <_NavItem>[
+      if (!isAdmin)
+        const _NavItem('مساحة الكاشير', Icons.point_of_sale, CashierWorkspace()),
       const _NavItem('الأجهزة', Icons.sports_esports, DevicesScreen()),
       const _NavItem('التربيزات', Icons.table_bar, TablesScreen()),
       const _NavItem('المشروبات', Icons.local_cafe, DrinkTablesScreen()),
       const _NavItem('الشيفت', Icons.badge, ShiftScreen()),
+      const _NavItem('طلبات البوفيه', Icons.receipt_outlined, LocalOrdersScreen()),
       _NavItem('لوحة التحكم', Icons.dashboard, const DashboardScreen(), adminOnly: true),
       const _NavItem('تقرير اليوم', Icons.analytics_outlined, DailyReportScreen(), adminOnly: true),
       const _NavItem('العملاء', Icons.people_outline, CustomersScreen(), adminOnly: true),
@@ -61,6 +68,8 @@ class _AppShellState extends ConsumerState<AppShell> {
         const _NavItem('الشحن', Icons.battery_charging_full, RechargeScreen()),
       _NavItem('الأرشيف', Icons.archive_outlined, const ArchiveScreen(), adminOnly: true),
       _NavItem('سجل التدقيق', Icons.fact_check, const AuditLogsScreen(), adminOnly: true),
+      const _NavItem('أقسام البوفيه', Icons.category_outlined, BuffetCategoriesScreen(), adminOnly: true),
+      const _NavItem('حسابات الكاشير', Icons.manage_accounts_outlined, CashiersScreen(), adminOnly: true),
       _NavItem('الإعدادات', Icons.settings, const SettingsScreen(), adminOnly: true),
     ];
 
