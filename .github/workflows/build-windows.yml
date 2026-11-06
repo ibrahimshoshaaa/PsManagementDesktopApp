@@ -2,7 +2,7 @@ name: Build Windows
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, codex/desktop-offline]
     tags: ["v*"]
   pull_request:
     branches: [main, master]
