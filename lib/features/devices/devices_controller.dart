@@ -36,6 +36,7 @@ class DevicesController {
         countdownTotalSeconds: Value(minutes == null ? null : minutes * 60),
         countdownAlertSent: const Value(false),
         sessionLogJson: const Value('[]'),
+        timerAlertMinutes: const Value(null),
       ));
     if (updated == 0) return;
     AuditLogService.logDevice(
@@ -205,8 +206,9 @@ class DevicesController {
   }
 
   /// إنهاء الجلسة — يحسب التكلفة، يسجّل في السجل، ويرجّع الجهاز لحالة "متاح".
-  Future<Map<String, dynamic>> stop(int deviceId, {required String closedBy}) async {
+  Future<Map<String, dynamic>?> stop(int deviceId, {required String closedBy}) => _db.transaction(() async {
     final device = await (_db.select(_db.devices)..where((t) => t.deviceId.equals(deviceId))).getSingle();
+    if (!device.isActive) return null;
     final prices = {for (final p in await _db.select(_db.prices).get()) p.priceKey: p.amount};
     final menu = {for (final m in await _db.select(_db.menuItems).get()) m.itemName: m.price};
 
@@ -232,37 +234,22 @@ class DevicesController {
     );
     await _db.into(_db.historyRecords).insert(record);
 
-    // تحديث مبيعات اليوم (لخصم المخزون تلقائيًا) — لكل صنف اتباع
-    for (final entry in orders.entries) {
-      final existing = await (_db.select(_db.dailyInventorySummary)..where((t) => t.itemName.equals(entry.key)))
-          .getSingleOrNull();
-      await _db.into(_db.dailyInventorySummary).insertOnConflictUpdate(
-            DailyInventorySummaryCompanion.insert(
-              itemName: entry.key,
-              quantitySold: Value((existing?.quantitySold ?? 0) + entry.value),
-            ),
-          );
-    }
+    await _db.deductSoldItems(orders);
 
-    await (_db.update(_db.devices)..where((t) => t.deviceId.equals(deviceId))).write(
-      const DevicesCompanion(
-        status: Value('متاح'),
-        mode: Value('normal'),
-        startTime: Value.absent(),
-        addedSeconds: Value(0),
-        isPaused: Value(false),
-        pauseStartTime: Value.absent(),
-        ordersJson: Value('{}'),
-        isCountdown: Value(false),
-        countdownTotalSeconds: Value.absent(),
-        countdownAlertSent: Value(false),
-      ),
-    );
-    // start_time لازم يتصفر فعليًا (null) مش يتحط absent بس — بنعمل تحديث تاني صريح
-    await _db.customStatement(
-      'UPDATE devices SET start_time = NULL, pause_start_time = NULL, countdown_total_seconds = NULL WHERE device_id = ?',
-      [deviceId],
-    );
+    await (_db.update(_db.devices)..where((t) => t.deviceId.equals(deviceId)))
+        .write(const DevicesCompanion(
+      status: Value('متاح'),
+      mode: Value('normal'),
+      startTime: Value(null),
+      addedSeconds: Value(0),
+      isPaused: Value(false),
+      pauseStartTime: Value(null),
+      ordersJson: Value('{}'),
+      timerAlertMinutes: Value(null),
+      isCountdown: Value(false),
+      countdownTotalSeconds: Value(null),
+      countdownAlertSent: Value(false),
+    ));
 
     AuditLogService.logDevice(
       action: AuditAction.deviceStop,
@@ -272,5 +259,5 @@ class DevicesController {
     );
 
     return {'total': total, 'time_cost': timeCost, 'buffet_cost': buffetCost};
-  }
+  });
 }

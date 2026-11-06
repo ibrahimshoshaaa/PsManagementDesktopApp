@@ -405,6 +405,20 @@ class AppDatabase extends _$AppDatabase {
         },
       );
 
+  /// Called inside the same transaction as receipt creation and session reset.
+  Future<void> deductSoldItems(Map<String, int> orders) async {
+    for (final entry in orders.entries) {
+      if (entry.value <= 0) continue;
+      final row = await (select(inventoryItems)
+            ..where((item) => item.itemName.equals(entry.key)))
+          .getSingleOrNull();
+      if (row == null) continue;
+      final remaining = row.quantity - entry.value;
+      await (update(inventoryItems)..where((item) => item.itemName.equals(entry.key)))
+          .write(InventoryItemsCompanion(quantity: Value(remaining < 0 ? 0 : remaining)));
+    }
+  }
+
   // ── Streams جاهزة هيتم استخدامها من الـ providers ──
 
   Stream<AppConfigRow> watchConfig() =>

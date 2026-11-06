@@ -1,14 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/local/database.dart';
 import '../../providers/core_providers.dart';
 import '../settings/settings_controller.dart';
-
-final _soldTodayProvider = StreamProvider<List<DailyInventorySummaryRow>>((ref) {
-  final db = ref.watch(databaseProvider);
-  return db.select(db.dailyInventorySummary).watch();
-});
 
 class InventoryScreen extends ConsumerStatefulWidget {
   const InventoryScreen({super.key});
@@ -64,10 +61,19 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       for (final row in ref.watch(inventoryStreamProvider).valueOrNull ?? <InventoryItemRow>[])
         row.itemName: row.quantity,
     };
-    final sold = {
-      for (final row in ref.watch(_soldTodayProvider).valueOrNull ?? <DailyInventorySummaryRow>[])
-        row.itemName: row.quantitySold,
-    };
+    final sold = <String, int>{};
+    final today = DateTime.now();
+    for (final record in ref.watch(historyStreamProvider).valueOrNull ?? <HistoryRecordRow>[]) {
+      if (!DateUtils.isSameDay(DateTime.tryParse(record.createdAt)?.toLocal(), today)) continue;
+      final orders = jsonDecode(record.ordersJson);
+      if (orders is! Map) continue;
+      for (final item in orders.entries) {
+        final quantity = item.value;
+        if (item.key is String && quantity is num) {
+          sold.update(item.key as String, (total) => total + quantity.toInt(), ifAbsent: quantity.toInt);
+        }
+      }
+    }
     final items = {
       for (final row in menu) row.itemName,
       ...stock.keys,

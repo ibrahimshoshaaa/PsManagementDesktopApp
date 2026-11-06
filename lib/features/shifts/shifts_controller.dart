@@ -40,7 +40,7 @@ class ShiftsController {
 
   /// إنهاء الشيفت — بيحسب ملخص من سجلات التاريخ اللي حصلت في نفس الفترة،
   /// وينقله لـ shifts_history، ويشيله من open_shifts.
-  Future<Map<String, dynamic>> endShift(String cashierName) async {
+  Future<Map<String, dynamic>> endShift(String cashierName) => _db.transaction(() async {
     final shift = await (_db.select(_db.openShifts)..where((t) => t.cashierName.equals(cashierName))).getSingleOrNull();
     if (shift == null) return {};
 
@@ -52,7 +52,7 @@ class ShiftsController {
       final created = DateTime.tryParse(r.createdAt);
       return created != null &&
           created.isAfter(startTime) && created.isBefore(endTime) &&
-          (r.cashier == null || r.cashier == cashierName);
+          r.cashier == cashierName;
     }).toList();
 
     final totalRevenue = shiftHistory.fold<double>(0, (s, r) => s + r.total);
@@ -80,5 +80,5 @@ class ShiftsController {
       'sessions_count': shiftHistory.length,
       'duration': endTime.difference(startTime),
     };
-  }
+  });
 }

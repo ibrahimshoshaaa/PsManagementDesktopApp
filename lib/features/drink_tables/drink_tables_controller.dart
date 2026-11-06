@@ -27,10 +27,11 @@ class DrinkTablesController {
   }
 
   /// حساب الفاتورة وتصفير الأوردرات — تربيزات المشروبات مالهاش وقت، بس أوردرات.
-  Future<double> checkout(int tableId) async {
+  Future<double?> checkout(int tableId) => _db.transaction(() async {
     final table = await (_db.select(_db.drinkTables)..where((t) => t.tableId.equals(tableId))).getSingle();
     final menu = {for (final m in await _db.select(_db.menuItems).get()) m.itemName: m.price};
     final orders = Map<String, int>.from(jsonDecode(table.ordersJson) as Map);
+    if (orders.isEmpty) return null;
 
     double total = 0;
     orders.forEach((item, qty) => total += qty * (menu[item] ?? 0));
@@ -49,21 +50,12 @@ class DrinkTablesController {
           ),
         );
 
-    for (final entry in orders.entries) {
-      final existing = await (_db.select(_db.dailyInventorySummary)..where((t) => t.itemName.equals(entry.key)))
-          .getSingleOrNull();
-      await _db.into(_db.dailyInventorySummary).insertOnConflictUpdate(
-            DailyInventorySummaryCompanion.insert(
-              itemName: entry.key,
-              quantitySold: Value((existing?.quantitySold ?? 0) + entry.value),
-            ),
-          );
-    }
+    await _db.deductSoldItems(orders);
 
     await (_db.update(_db.drinkTables)..where((t) => t.tableId.equals(tableId)))
         .write(const DrinkTablesCompanion(ordersJson: Value('{}')));
 
 
     return total;
-  }
+  });
 }

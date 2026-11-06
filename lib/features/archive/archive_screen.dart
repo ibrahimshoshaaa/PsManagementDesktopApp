@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../data/local/database.dart';
 import '../../providers/core_providers.dart';
 
 class ArchiveScreen extends ConsumerWidget {
@@ -22,7 +23,16 @@ class ArchiveScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('الأرشيف', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+              Row(
+                children: [
+                  const Expanded(child: Text('ملخصات الفواتير المحفوظة حسب اليوم')),
+                  FilledButton.icon(
+                    onPressed: () => _saveDay(context, ref),
+                    icon: const Icon(Icons.archive_outlined),
+                    label: const Text('حفظ يوم في الأرشيف'),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
               Expanded(
                 child: archives.isEmpty
@@ -66,6 +76,57 @@ class ArchiveScreen extends ConsumerWidget {
         );
       },
     );
+  }
+
+  Future<void> _saveDay(BuildContext context, WidgetRef ref) async {
+    final today = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: today,
+      firstDate: DateTime(2000),
+      lastDate: today,
+    );
+    if (!context.mounted || date == null) return;
+    final db = ref.read(databaseProvider);
+    final label = date.toIso8601String().split('T').first;
+    try {
+      final saved = await db.transaction(() async {
+        final history = await db.select(db.historyRecords).get();
+        final records = history.where((row) =>
+            DateUtils.isSameDay(DateTime.tryParse(row.createdAt)?.toLocal(), date)).toList();
+        if (records.isEmpty) return false;
+        final summary = DailyArchivesCompanion.insert(
+          date: label,
+          totalTime: records.fold<double>(0, (sum, row) => sum + row.timeCost),
+          totalBuffet: records.fold<double>(0, (sum, row) => sum + row.buffetCost),
+          totalOverall: records.fold<double>(0, (sum, row) => sum + row.total),
+          recordsJson: jsonEncode(records.map((row) => {
+            'name': row.name,
+            'total': row.total,
+            'cashier': row.cashier,
+            'date': row.date,
+            'orders': row.ordersJson,
+          }).toList()),
+        );
+        final existing = await (db.select(db.dailyArchives)..where((row) => row.date.equals(label))).get();
+        if (existing.isEmpty) {
+          await db.into(db.dailyArchives).insert(summary);
+        } else {
+          await (db.update(db.dailyArchives)..where((row) => row.rowId.equals(existing.first.rowId)))
+              .write(summary);
+        }
+        return true;
+      });
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          saved ? 'اتحفظ ملخص $label. الفواتير الأصلية موجودة في السجل.' : 'مفيش فواتير في اليوم ده.',
+        )));
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر حفظ الأرشيف')));
+      }
+    }
   }
 }
 

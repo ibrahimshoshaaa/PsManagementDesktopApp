@@ -18,7 +18,7 @@ class TablesController {
 
   Future<void> start(int tableId) async {
     final table = await (_db.select(_db.gameTables)..where((t) => t.tableId.equals(tableId))).getSingleOrNull();
-    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId))).write(
+    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId) & t.startTime.isNull())).write(
       GameTablesCompanion(
         startTime: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
         isPaused: const Value(false),
@@ -78,8 +78,9 @@ class TablesController {
 
   /// إنهاء الجلسة — [byGame] لو true بيتحاسب بسعر اللعبة الثابت (game_price)
   /// بدل سعر الساعة.
-  Future<Map<String, dynamic>> stop(int tableId, {required bool byGame}) async {
+  Future<Map<String, dynamic>?> stop(int tableId, {required bool byGame}) => _db.transaction(() async {
     final table = await (_db.select(_db.gameTables)..where((t) => t.tableId.equals(tableId))).getSingle();
+    if (table.startTime == null || (byGame && table.gamePrice <= 0)) return null;
     final menu = {for (final m in await _db.select(_db.menuItems).get()) m.itemName: m.price};
     final orders = Map<String, int>.from(jsonDecode(table.ordersJson) as Map);
 
@@ -105,30 +106,19 @@ class TablesController {
           ),
         );
 
-    for (final entry in orders.entries) {
-      final existing = await (_db.select(_db.dailyInventorySummary)..where((t) => t.itemName.equals(entry.key)))
-          .getSingleOrNull();
-      await _db.into(_db.dailyInventorySummary).insertOnConflictUpdate(
-            DailyInventorySummaryCompanion.insert(
-              itemName: entry.key,
-              quantitySold: Value((existing?.quantitySold ?? 0) + entry.value),
-            ),
-          );
-    }
+    await _db.deductSoldItems(orders);
 
-    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId))).write(
-      const GameTablesCompanion(
-        isPaused: Value(false),
-        ordersJson: Value('{}'),
-      ),
-    );
-    await _db.customStatement(
-      'UPDATE game_tables SET start_time = NULL, pause_start_time = NULL, added_seconds = 0 WHERE table_id = ?',
-      [tableId],
-    );
+    await (_db.update(_db.gameTables)..where((t) => t.tableId.equals(tableId)))
+        .write(const GameTablesCompanion(
+      startTime: Value(null),
+      pauseStartTime: Value(null),
+      addedSeconds: Value(0),
+      isPaused: Value(false),
+      ordersJson: Value('{}'),
+    ));
 
     AuditLogService.logTable(action: AuditAction.tableStop, tableName: table.name, extra: '${total.toStringAsFixed(1)} ج');
 
     return {'total': total, 'time_cost': timeCost, 'buffet_cost': buffetCost};
-  }
+  });
 }

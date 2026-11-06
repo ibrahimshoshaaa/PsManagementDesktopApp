@@ -98,7 +98,7 @@ class _DrinkTableCard extends ConsumerWidget {
                 if (hasOrders)
                   SizedBox(
                     width: double.infinity,
-                    child: FilledButton.tonal(onPressed: () => _checkout(context, ref), child: const Text('حساب')),
+                    child: FilledButton.tonal(onPressed: hasOrders ? () => _checkout(context, ref) : null, child: const Text('حساب')),
                   ),
               ],
             ),
@@ -110,6 +110,7 @@ class _DrinkTableCard extends ConsumerWidget {
 
   void _checkout(BuildContext context, WidgetRef ref) async {
     final total = await ref.read(drinkTablesControllerProvider).checkout(table.tableId);
+    if (total == null) return;
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('الإجمالي: ${total.toStringAsFixed(1)} ج')));
     }

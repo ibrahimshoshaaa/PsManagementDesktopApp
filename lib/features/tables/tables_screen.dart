@@ -166,13 +166,14 @@ class _TableCard extends ConsumerWidget {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('بالساعة')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('باللعبة')),
+          if (table.gamePrice > 0)
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('باللعبة')),
         ],
       ),
     );
-    if (byGame == null) return;
+    if (byGame == null || !context.mounted) return;
     final result = await ref.read(tablesControllerProvider).stop(table.tableId, byGame: byGame);
-    if (context.mounted) {
+    if (context.mounted && result != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('الإجمالي: ${(result['total'] as double).toStringAsFixed(1)} ج')),
       );

@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -90,8 +93,40 @@ class _GeneralTab extends ConsumerWidget {
           icon: const Icon(Icons.lock_reset),
           label: const Text('تغيير كلمة سر الأدمن'),
         ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => _backup(context, ref),
+          icon: const Icon(Icons.save_alt),
+          label: const Text('حفظ نسخة احتياطية من البيانات'),
+        ),
       ],
     );
+  }
+
+  Future<void> _backup(BuildContext context, WidgetRef ref) async {
+    try {
+      final stamp = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final destination = await getSaveLocation(
+        suggestedName: 'PS-Backup-$stamp.sqlite',
+        acceptedTypeGroups: const [XTypeGroup(label: 'SQLite', extensions: ['sqlite'])],
+      );
+      if (destination == null || !context.mounted) return;
+      if (await File(destination.path).exists()) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('اختار اسم ملف جديد للنسخة الاحتياطية.')));
+        }
+        return;
+      }
+      if (!context.mounted) return;
+      await ref.read(databaseProvider).customStatement('VACUUM INTO ?', [destination.path]);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ نسخة احتياطية محلية')));
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر حفظ النسخة الاحتياطية')));
+      }
+    }
   }
 
   void _showChangePasswordDialog(BuildContext context, SettingsController controller) {

@@ -37,18 +37,20 @@ class DashboardScreen extends ConsumerWidget {
           children: [
             const Text('لوحة التحكم', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
             const SizedBox(height: 20),
-            GridView.count(
-              crossAxisCount: 4,
+            GridView(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 275,
+                mainAxisExtent: 115,
+                crossAxisSpacing: 16,
+                mainAxisSpacing: 16,
+              ),
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 1.8,
               children: [
                 _StatCard(icon: Icons.payments, label: 'إجمالي اليوم', value: '${stats.totalRevenueToday.toStringAsFixed(1)} ج', color: AppColors.green),
                 _StatCard(icon: Icons.access_time, label: 'وقت', value: '${stats.timeRevenueToday.toStringAsFixed(1)} ج', color: AppColors.accent),
                 _StatCard(icon: Icons.fastfood, label: 'بوفيه', value: '${stats.buffetRevenueToday.toStringAsFixed(1)} ج', color: AppColors.orange),
-                _StatCard(icon: Icons.trending_up, label: 'صافي اليوم', value: '${netToday.toStringAsFixed(1)} ج', color: netToday >= 0 ? AppColors.green : AppColors.red),
+                _StatCard(icon: Icons.trending_up, label: 'بعد المصروفات', value: '${netToday.toStringAsFixed(1)} ج', color: netToday >= 0 ? AppColors.green : AppColors.red),
                 _StatCard(icon: Icons.sports_esports, label: 'أجهزة شغالة', value: '${stats.activeDevices}/${stats.totalDevices}', color: AppColors.accent),
                 _StatCard(icon: Icons.table_bar, label: 'تربيزات شغالة', value: '${stats.activeTables}/${stats.totalTables}', color: AppColors.accent),
                 _StatCard(icon: Icons.receipt_long, label: 'جلسات اليوم', value: '${stats.sessionsToday}', color: AppColors.amber),
@@ -138,7 +140,7 @@ class _StatCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [Icon(icon, color: color, size: 18), const SizedBox(width: 6), Text(label, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12))]),
+            Row(children: [Icon(icon, color: color, size: 18), const SizedBox(width: 6), Flexible(child: Text(label, style: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 12)))]),
             const Spacer(),
             Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.bold)),
           ],

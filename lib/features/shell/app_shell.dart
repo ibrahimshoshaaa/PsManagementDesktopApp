@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../providers/core_providers.dart';
 import '../devices/devices_screen.dart';
+import '../devices/session_alerts.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../tables/tables_screen.dart';
 import '../drink_tables/drink_tables_screen.dart';
@@ -81,7 +82,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final current = visibleItems[selected];
     final compact = MediaQuery.sizeOf(context).width < 1050;
 
-    return Scaffold(
+    return SessionAlerts(child: Scaffold(
       backgroundColor: AppColors.background,
       body: Row(
         children: [
@@ -127,7 +128,7 @@ class _AppShellState extends ConsumerState<AppShell> {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 

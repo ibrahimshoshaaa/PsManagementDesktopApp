@@ -9,12 +9,20 @@ import '../../domain/device_logic.dart';
 import '../../providers/core_providers.dart';
 import 'devices_controller.dart';
 
-class DevicesScreen extends ConsumerWidget {
+class DevicesScreen extends ConsumerStatefulWidget {
   const DevicesScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    ref.watch(tickerProvider); // يحدّث العدادات كل ثانية
+  ConsumerState<DevicesScreen> createState() => _DevicesScreenState();
+}
+
+enum _DeviceFilter { all, available, running, paused }
+
+class _DevicesScreenState extends ConsumerState<DevicesScreen> {
+  _DeviceFilter _filter = _DeviceFilter.all;
+
+  @override
+  Widget build(BuildContext context) {
     final devicesAsync = ref.watch(devicesStreamProvider);
 
     return devicesAsync.when(
@@ -26,27 +34,100 @@ class DevicesScreen extends ConsumerWidget {
             child: Text('مفيش أجهزة مضافة — أضيفها من الإعدادات', style: TextStyle(color: Colors.white38)),
           );
         }
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 340,
-              mainAxisExtent: 244,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
+        final available = devices.where((device) => !device.isActive).length;
+        final running = devices.where((device) => device.isRunning).length;
+        final paused = devices.length - available - running;
+        final filtered = devices.where((device) => switch (_filter) {
+          _DeviceFilter.all => true,
+          _DeviceFilter.available => !device.isActive,
+          _DeviceFilter.running => device.isRunning,
+          _DeviceFilter.paused => device.isActive && device.isPaused,
+        }).toList();
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(24, 22, 24, 16),
+              sliver: SliverToBoxAdapter(
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF183D47), Color(0xFF172239)],
+                      begin: AlignmentDirectional.topStart,
+                      end: AlignmentDirectional.bottomEnd,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.accent.withOpacity(.22)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(children: [
+                        Icon(Icons.sports_esports_outlined, color: AppColors.accent),
+                        SizedBox(width: 10),
+                        Expanded(child: Text('حالة صالة اللعب', style: TextStyle(
+                          fontSize: 25, fontWeight: FontWeight.w700,
+                        ))),
+                      ]),
+                      const SizedBox(height: 8),
+                      const Text('اختار حالة لفلترة الأجهزة، أو افتح جهاز لإدارة الجلسة.'),
+                      const SizedBox(height: 18),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          _filterChip(_DeviceFilter.all, 'كل الأجهزة', devices.length, Icons.grid_view),
+                          _filterChip(_DeviceFilter.available, 'متاح', available, Icons.check_circle_outline),
+                          _filterChip(_DeviceFilter.running, 'شغّال', running, Icons.play_circle_outline),
+                          _filterChip(_DeviceFilter.paused, 'متوقف مؤقتًا', paused, Icons.pause_circle_outline),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-            itemCount: devices.length,
-            itemBuilder: (context, i) => _DeviceCard(device: devices[i]),
-          ),
+            if (filtered.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: Text('مفيش أجهزة بالحالة دي حاليًا')),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                sliver: SliverGrid.builder(
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 340,
+                    mainAxisExtent: 244,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                  ),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) => _DeviceCard(
+                    key: ValueKey(filtered[index].deviceId),
+                    device: filtered[index],
+                  ),
+                ),
+              ),
+          ],
         );
       },
+    );
+  }
+
+  Widget _filterChip(_DeviceFilter filter, String label, int count, IconData icon) {
+    return ChoiceChip(
+      avatar: Icon(icon, size: 18),
+      label: Text('$label  $count'),
+      selected: _filter == filter,
+      onSelected: (_) => setState(() => _filter = filter),
     );
   }
 }
 
 class _DeviceCard extends ConsumerWidget {
   final DeviceRow device;
-  const _DeviceCard({required this.device});
+  const _DeviceCard({super.key, required this.device});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -56,6 +137,7 @@ class _DeviceCard extends ConsumerWidget {
       for (final m in ref.watch(menuItemsStreamProvider).valueOrNull ?? <MenuItemRow>[]) m.itemName: m.price
     };
     final isActive = device.isActive;
+    if (isActive) ref.watch(tickerProvider);
     final timeCost = isActive ? device.calculateTimePrice(prices) : 0.0;
 
     Map<String, int> orders = {};
@@ -66,7 +148,7 @@ class _DeviceCard extends ConsumerWidget {
     final total = timeCost + buffetCost;
 
     final isPs5 = device.deviceType == 'ps5';
-    final glowColor = device.isPaused ? AppColors.amber : AppColors.accent;
+    final glowColor = device.countdownFinished ? AppColors.red : device.isPaused ? AppColors.amber : AppColors.accent;
     final statusColor = isActive ? glowColor : Colors.white24;
 
     return AnimatedContainer(
@@ -127,8 +209,10 @@ class _DeviceCard extends ConsumerWidget {
                                 style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.green)),
                           ],
                         )
-                      : Text(device.status, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
+                      : Text('جاهز للتشغيل', style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
                 ),
+                if (device.countdownFinished)
+                  const Center(child: Text('انتهى الوقت المحدد', style: TextStyle(color: AppColors.red))),
                 const Spacer(),
                 if (!isActive)
                   SizedBox(
@@ -262,12 +346,12 @@ class _DeviceCard extends ConsumerWidget {
         ],
       ),
     );
-    if (confirmed == true) {
+    if (confirmed == true && context.mounted) {
       final session = ref.read(sessionProvider);
       final result = await ref
           .read(devicesControllerProvider)
-          .stop(device.deviceId, closedBy: session.cashierName ?? 'admin');
-      if (context.mounted) {
+          .stop(device.deviceId, closedBy: session.cashierName ?? 'أدمن');
+      if (context.mounted && result != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('الإجمالي: ${(result['total'] as double).toStringAsFixed(1)} ج')),
         );
