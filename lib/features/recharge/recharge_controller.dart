@@ -49,6 +49,7 @@ class RechargeController {
             timeCost: Value(value),
             buffetCost: const Value(0),
             ordersJson: const Value('{}'),
+            cashier: Value(ref.read(sessionProvider).cashierName ?? 'أدمن'),
             date: DateTime.now().toString(),
             createdAt: DateTime.now().toIso8601String(),
           ),
@@ -61,6 +62,7 @@ class RechargeController {
       'buffet_cost': 0.0,
       'orders': <String, int>{},
       'date': DateTime.now().toString(),
+      'cashier': ref.read(sessionProvider).cashierName ?? 'أدمن',
     });
     _pushStatic();
   }

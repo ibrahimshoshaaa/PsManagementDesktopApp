@@ -27,9 +27,9 @@ class DrinkTablesScreen extends ConsumerWidget {
         return Padding(
           padding: const EdgeInsets.all(20),
           child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              childAspectRatio: 1.05,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 340,
+              mainAxisExtent: 244,
               crossAxisSpacing: 16,
               mainAxisSpacing: 16,
             ),

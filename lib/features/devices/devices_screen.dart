@@ -30,9 +30,9 @@ class DevicesScreen extends ConsumerWidget {
         return Padding(
           padding: const EdgeInsets.all(20),
           child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              childAspectRatio: 1.05,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 340,
+              mainAxisExtent: 244,
               crossAxisSpacing: 16,
               mainAxisSpacing: 16,
             ),
@@ -84,7 +84,7 @@ class _DeviceCard extends ConsumerWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () => _showDeviceSheet(context, ref),
+          onTap: () => isActive ? _showDeviceSheet(context, ref) : _showStartDialog(context, ref),
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Column(
@@ -144,7 +144,7 @@ class _DeviceCard extends ConsumerWidget {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.tonal(
-                      onPressed: () => controller.start(device.deviceId, mode: 'normal'),
+                      onPressed: () => _showStartDialog(context, ref),
                       child: const Text('تشغيل'),
                     ),
                   )
@@ -182,6 +182,82 @@ class _DeviceCard extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _showStartDialog(BuildContext context, WidgetRef ref) async {
+    final controller = ref.read(devicesControllerProvider);
+    final matchEnabled = ref.read(appConfigProvider).valueOrNull?.matchEnabled ?? false;
+    var mode = 'normal';
+    var fixed = false;
+    var minutes = '';
+    final form = GlobalKey<FormState>();
+    final action = await showDialog<String>(
+      context: context,
+      builder: (dialog) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: Text('تشغيل ${device.displayName}'),
+          content: SizedBox(
+            width: 340,
+            child: Form(
+              key: form,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'normal', label: Text('عادي')),
+                      ButtonSegment(value: 'multi', label: Text('مالتي')),
+                    ],
+                    selected: {mode},
+                    onSelectionChanged: (values) => update(() => mode = values.single),
+                  ),
+                  const SizedBox(height: 14),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('وقت محدد'),
+                    value: fixed,
+                    onChanged: (value) => update(() => fixed = value),
+                  ),
+                  if (fixed)
+                    TextFormField(
+                      decoration: const InputDecoration(labelText: 'عدد الدقائق'),
+                      keyboardType: TextInputType.number,
+                      onChanged: (value) => minutes = value.trim(),
+                      validator: (value) {
+                        final count = int.tryParse(value?.trim() ?? '');
+                        return count == null || count <= 0 ? 'اكتب عدد دقائق أكبر من صفر' : null;
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialog), child: const Text('إلغاء')),
+            if (matchEnabled)
+              OutlinedButton(
+                onPressed: () => Navigator.pop(dialog, 'match'),
+                child: const Text('تسجيل ماتش'),
+              ),
+            FilledButton(
+              onPressed: () {
+                if (form.currentState!.validate()) Navigator.pop(dialog, 'start');
+              },
+              child: const Text('تشغيل الجلسة'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == 'match') {
+      final recorded = await controller.recordMatch(device.deviceId, mode);
+      if (recorded && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تسجيل الماتش')));
+      }
+    } else if (action == 'start') {
+      await controller.start(device.deviceId, mode: mode, minutes: fixed ? int.parse(minutes) : null);
+    }
   }
 
   void _showQr(BuildContext context, WidgetRef ref) {
@@ -225,11 +301,14 @@ class _DeviceCard extends ConsumerWidget {
   }
 
   void _showDeviceSheet(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
+    showDialog<void>(
       context: context,
-      backgroundColor: AppColors.card,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => _DeviceDetailSheet(device: device),
+      builder: (context) => Dialog(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 620),
+          child: SingleChildScrollView(child: _DeviceDetailSheet(device: device)),
+        ),
+      ),
     );
   }
 }
@@ -246,13 +325,12 @@ class _DeviceDetailSheet extends ConsumerStatefulWidget {
 class _DeviceDetailSheetState extends ConsumerState<_DeviceDetailSheet> {
   @override
   Widget build(BuildContext context) {
-    final device = widget.device;
+    final devices = ref.watch(devicesStreamProvider).valueOrNull ?? [];
+    final device = devices.where((row) => row.deviceId == widget.device.deviceId).firstOrNull ?? widget.device;
+    final destinations = devices.where((row) =>
+        row.deviceId != device.deviceId && !row.isActive && row.deviceType == device.deviceType).toList();
     final menu = ref.watch(menuItemsStreamProvider).valueOrNull ?? [];
     final controller = ref.read(devicesControllerProvider);
-    final timerController = TextEditingController(text: device.timerAlertMinutes?.toString() ?? '');
-    final countdownController = TextEditingController(
-      text: device.isCountdown && device.countdownTotalSeconds != null ? (device.countdownTotalSeconds! ~/ 60).toString() : '',
-    );
 
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -266,8 +344,8 @@ class _DeviceDetailSheetState extends ConsumerState<_DeviceDetailSheet> {
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: timerController,
+                  child: TextFormField(
+                    initialValue: device.timerAlertMinutes?.toString(),
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(labelText: 'تنبيه بعد (دقيقة)'),
                     onSubmitted: (v) => controller.setTimerAlert(device.deviceId, int.tryParse(v)),
@@ -275,14 +353,41 @@ class _DeviceDetailSheetState extends ConsumerState<_DeviceDetailSheet> {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: TextField(
-                    controller: countdownController,
+                  child: TextFormField(
+                    initialValue: device.isCountdown && device.countdownTotalSeconds != null
+                        ? (device.countdownTotalSeconds! ~/ 60).toString()
+                        : null,
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(labelText: 'عد تنازلي (دقيقة)'),
                     onSubmitted: (v) => controller.setCountdown(device.deviceId, int.tryParse(v)),
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (destinations.isNotEmpty) ...[
+            OutlinedButton.icon(
+              icon: const Icon(Icons.swap_horiz),
+              label: const Text('نقل الجلسة'),
+              onPressed: () async {
+                final destination = await showDialog<int>(
+                  context: context,
+                  builder: (dialog) => SimpleDialog(
+                    title: const Text('اختار جهاز متاح من نفس النوع'),
+                    children: [
+                      for (final row in destinations)
+                        SimpleDialogOption(
+                          onPressed: () => Navigator.pop(dialog, row.deviceId),
+                          child: Text(row.displayName),
+                        ),
+                    ],
+                  ),
+                );
+                if (destination == null || !context.mounted) return;
+                final moved = await controller.transferSession(device.deviceId, destination);
+                if (moved && context.mounted) Navigator.pop(context);
+              },
             ),
             const SizedBox(height: 16),
           ],

@@ -44,6 +44,7 @@ class DrinkTablesController {
             timeCost: const Value(0),
             buffetCost: Value(total),
             ordersJson: Value(jsonEncode(orders)),
+            cashier: Value(ref.read(sessionProvider).cashierName ?? 'أدمن'),
             date: DateTime.now().toString(),
             createdAt: DateTime.now().toIso8601String(),
           ),
@@ -72,6 +73,7 @@ class DrinkTablesController {
       'buffet_cost': total,
       'orders': orders,
       'date': DateTime.now().toString(),
+      'cashier': ref.read(sessionProvider).cashierName ?? 'أدمن',
     });
 
     return total;
